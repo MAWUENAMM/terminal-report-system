@@ -86,7 +86,7 @@ export default function HomePage() {
           <div className="max-w-xl">
             <div className="animate-slide-right inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/90 backdrop-blur-md">
               <Sparkles size={13} className="text-[var(--g-gold)]" />
-              Built for Ghana Education Service
+              Built for Ghana Basic Schools
             </div>
 
             <h1 className="animate-fade-up delay-1 font-display mt-6 text-[2.6rem] font-medium leading-[1.1] tracking-[-0.02em] text-white sm:text-5xl lg:text-[3.4rem]">
