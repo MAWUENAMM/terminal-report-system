@@ -75,16 +75,14 @@ async function createSchool(
       .single();
     check(error);
     schoolId = school.id;
-    const { error: staffError } = await service
-      .from("school_users")
-      .insert({
-        auth_user_id: identity.user.id,
-        school_id: schoolId,
-        email: address,
-        full_name: contact,
-        role: "ADMIN",
-        must_change_password: true,
-      });
+    const { error: staffError } = await service.from("school_users").insert({
+      auth_user_id: identity.user.id,
+      school_id: schoolId,
+      email: address,
+      full_name: contact,
+      role: "ADMIN",
+      must_change_password: true,
+    });
     check(staffError);
     const { error: termError } = await service
       .from("academic_terms")
@@ -185,6 +183,116 @@ Deno.serve(async (request) => {
         { error: "Choose your own password before continuing." },
         403,
       );
+    const { data: operator, error: operatorError } = await service
+      .from("platform_operators")
+      .select("auth_user_id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    check(operatorError);
+    if (
+      ["approve_request", "resolve_request", "create_school"].includes(action)
+    ) {
+      if (!operator)
+        return reply({ error: "Platform administrator access required." }, 403);
+      // The caller's JWT is forwarded so database functions recheck platform authority.
+      const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authorization } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      async function provision(
+        address: string,
+        name: string,
+        details: unknown,
+        requestId: string | null = null,
+      ) {
+        const identity = await createIdentity(address, name);
+        const { data: schoolId, error } = await caller.rpc(
+          "platform_create_school",
+          {
+            identity_id: identity.user.id,
+            admin_name: name,
+            admin_email: address,
+            details,
+            request_id: requestId,
+          },
+        );
+        if (error) {
+          await service.auth.admin.deleteUser(identity.user.id);
+          check(error);
+        }
+        return {
+          schoolId,
+          email: address,
+          temporaryPassword: identity.temporaryPassword,
+        };
+      }
+      if (action === "create_school") {
+        return reply(
+          await provision(
+            email(body.admin_email),
+            value(body.admin_name, 2, 120),
+            body.details,
+          ),
+        );
+      }
+      const { data: entry, error } = await service
+        .from("school_requests")
+        .select("*")
+        .eq("id", value(body.request_id))
+        .eq("status", "PENDING")
+        .single();
+      check(error);
+      if (action === "resolve_request") {
+        const { data: changed, error } = await service
+          .from("school_requests")
+          .update({
+            status: entry.kind === "CONTACT" ? "RESOLVED" : "DECLINED",
+          })
+          .eq("id", entry.id)
+          .eq("status", "PENDING")
+          .select("id")
+          .single();
+        check(error);
+        return reply({ success: !!changed });
+      }
+      if (entry.kind !== "ACCESS")
+        return reply(
+          { error: "This is a contact message, not a school application." },
+          400,
+        );
+      return reply(
+        await provision(
+          entry.email,
+          entry.contact_name,
+          {
+            name: entry.school_name,
+            email: entry.email,
+            phone: entry.phone,
+            academic_year: "2026/2027",
+            current_term: 1,
+            active: true,
+          },
+          entry.id,
+        ),
+      );
+    }
+    const { data: school, error: schoolError } = await service
+      .from("schools")
+      .select("active,deleted_at")
+      .eq("id", profile.school_id)
+      .single();
+    check(schoolError);
+    if (
+      (!school?.active || school.deleted_at) &&
+      !(operator && action === "update_profile")
+    )
+      return reply(
+        {
+          error:
+            "Your school workspace is inactive. Contact the Platform Administrator.",
+        },
+        403,
+      );
     if (action === "update_profile") {
       const { error } = await service
         .from("school_users")
@@ -195,50 +303,6 @@ Deno.serve(async (request) => {
         .eq("id", profile.id);
       check(error);
       return reply({ success: true });
-    }
-    if (["approve_request", "resolve_request"].includes(action)) {
-      const { data: operator } = await service
-        .from("platform_operators")
-        .select("auth_user_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-      if (!operator)
-        return reply({ error: "Platform owner access required." }, 403);
-      const { data: entry, error } = await service
-        .from("school_requests")
-        .select("*")
-        .eq("id", value(body.request_id))
-        .eq("status", "PENDING")
-        .single();
-      check(error);
-      if (action === "resolve_request") {
-        const { error } = await service
-          .from("school_requests")
-          .update({
-            status: entry.kind === "CONTACT" ? "RESOLVED" : "DECLINED",
-          })
-          .eq("id", entry.id)
-          .eq("status", "PENDING");
-        check(error);
-        return reply({ success: true });
-      }
-      if (entry.kind !== "ACCESS")
-        return reply(
-          { error: "This is a contact message, not a school application." },
-          400,
-        );
-      const result = await createSchool(
-        entry.email,
-        entry.contact_name,
-        entry.school_name,
-      );
-      const { error: update } = await service
-        .from("school_requests")
-        .update({ status: "APPROVED", school_id: result.schoolId })
-        .eq("id", entry.id)
-        .eq("status", "PENDING");
-      check(update);
-      return reply(result);
     }
     if (profile.role !== "ADMIN")
       return reply(
@@ -251,16 +315,14 @@ Deno.serve(async (request) => {
         role = value(body.role);
       if (!roles.includes(role)) throw new Error("Choose a valid staff role.");
       const identity = await createIdentity(address, name);
-      const { error } = await service
-        .from("school_users")
-        .insert({
-          auth_user_id: identity.user.id,
-          school_id: profile.school_id,
-          full_name: name,
-          email: address,
-          role,
-          must_change_password: true,
-        });
+      const { error } = await service.from("school_users").insert({
+        auth_user_id: identity.user.id,
+        school_id: profile.school_id,
+        full_name: name,
+        email: address,
+        role,
+        must_change_password: true,
+      });
       if (error) {
         await service.auth.admin.deleteUser(identity.user.id);
         check(error);

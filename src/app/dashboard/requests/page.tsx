@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Empty, Restricted, Modal } from "@/components/ui";
 import { browserClient } from "@/lib/supabase/client";
@@ -14,6 +15,7 @@ type SchoolRequest = {
   message: string;
   status: string;
   created_at: string;
+  school_id: string | null;
 };
 export default function Requests() {
   const { data: w, run, busy } = useWorkspace(),
@@ -42,6 +44,9 @@ export default function Requests() {
         title="School access & contact requests"
         description="Review each representative before approving access. Approval creates a separate school workspace and its initial administrator account."
       >
+        <Link href="/dashboard/schools" className="btn-primary">
+          Manage approved schools
+        </Link>
         <button className="btn-secondary" onClick={() => void load()}>
           Refresh requests
         </button>
@@ -117,6 +122,11 @@ export default function Requests() {
                     {r.kind === "ACCESS" ? "Decline request" : "Mark resolved"}
                   </button>
                 </div>
+              )}
+              {r.school_id && (
+                <Link href="/dashboard/schools" className="btn-secondary mt-4">
+                  Manage school
+                </Link>
               )}
             </section>
           ))}

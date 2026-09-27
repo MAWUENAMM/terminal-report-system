@@ -83,6 +83,17 @@ export function WorkspaceProvider({
       .eq("id", p.school_id)
       .single();
     if (school.error) throw new Error(school.error.message);
+    const { data: operator, error: operatorError } = await client
+      .from("platform_operators")
+      .select("auth_user_id")
+      .eq("auth_user_id", p.auth_user_id)
+      .maybeSingle();
+    if (operatorError) throw new Error(operatorError.message);
+    if ((!school.data.active || school.data.deleted_at) && !operator) {
+      setData(null);
+      window.location.assign("/school-inactive");
+      return;
+    }
     const results = await Promise.all([
       all("school_users"),
       all("classes"),
@@ -96,11 +107,6 @@ export function WorkspaceProvider({
       all("academic_terms"),
       all("report_archives"),
       all("term_events"),
-      client
-        .from("platform_operators")
-        .select("auth_user_id")
-        .eq("auth_user_id", p.auth_user_id)
-        .maybeSingle(),
     ]);
     const [
       staff,
@@ -115,7 +121,6 @@ export function WorkspaceProvider({
       terms,
       archives,
       termEvents,
-      operator,
     ] = results;
 
     setData({
@@ -133,7 +138,7 @@ export function WorkspaceProvider({
       terms,
       archives,
       termEvents,
-      operator: !!operator.data,
+      operator: !!operator,
     } as Workspace);
   }, [profile.auth_user_id]);
   useEffect(() => {

@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Inbox,
   School,
+  Building2,
 } from "lucide-react";
 import { useWorkspace } from "@/components/workspace";
 import { isLeader, roleNames } from "@/lib/models";
@@ -26,10 +27,22 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const { data: w, refresh, run } = useWorkspace(),
     [mobile, setMobile] = useState(false);
   const path = usePathname();
+  const schoolActive = w.school.active && !w.school.deleted_at;
+  const platformPage = [
+    "/dashboard/schools",
+    "/dashboard/requests",
+    "/dashboard/profile",
+  ].includes(path);
   const admin = w.profile.role === "ADMIN",
     ownClass = w.classes.some((c) => c.class_teacher_id === w.profile.id),
     leader = isLeader(w.profile.role);
   const nav = [
+    {
+      path: "/dashboard/schools",
+      label: "Schools",
+      icon: Building2,
+      show: w.operator,
+    },
     {
       path: "/dashboard",
       label: "Overview",
@@ -89,7 +102,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       icon: UserRound,
       show: true,
     },
-  ].filter((n) => n.show);
+  ].filter(
+    (n) =>
+      n.show &&
+      (schoolActive ||
+        [
+          "/dashboard/schools",
+          "/dashboard/requests",
+          "/dashboard/profile",
+        ].includes(n.path)),
+  );
   const navigation = (
     <>
       <Link
@@ -103,7 +125,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <span>
           <strong className="block">EduReport</strong>
           <span className="text-[10px] uppercase tracking-widest text-white/60">
-            School workspace
+            {w.operator ? "Platform administration" : "School workspace"}
           </span>
         </span>
       </Link>
@@ -132,7 +154,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <div className="border-t border-white/15 p-4">
         <div className="text-sm font-semibold">{w.profile.full_name}</div>
         <div className="mt-1 text-xs text-white/60">
-          {roleNames[w.profile.role]}
+          {w.operator ? "Platform Administrator" : roleNames[w.profile.role]}
         </div>
         <button
           className="mt-4 flex items-center gap-2 text-sm text-white/70"
@@ -210,7 +232,20 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="mx-auto max-w-[1400px] space-y-7 p-4 pb-28 md:p-7 md:pb-28">
-          {children}
+          {schoolActive || (w.operator && platformPage) ? (
+            children
+          ) : (
+            <section className="surface rounded-2xl p-7">
+              <h1 className="page-title">School workspace inactive</h1>
+              <p className="my-4 text-muted">
+                This school’s records are preserved. Use Schools to restore
+                access. Your platform administration remains available.
+              </p>
+              <Link href="/dashboard/schools" className="btn-primary">
+                Manage schools
+              </Link>
+            </section>
+          )}
         </main>
       </div>
     </div>

@@ -21,7 +21,8 @@ export async function proxy(request: NextRequest) {
   if (
     !user &&
     (request.nextUrl.pathname.startsWith("/dashboard") ||
-      request.nextUrl.pathname.startsWith("/account"))
+      request.nextUrl.pathname.startsWith("/account") ||
+      request.nextUrl.pathname === "/school-inactive")
   ) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
@@ -32,5 +33,10 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 export const config = {
-  matcher: ["/dashboard/:path*", "/account/:path*", "/auth/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/account/:path*",
+    "/auth/:path*",
+    "/school-inactive",
+  ],
 };

@@ -4,14 +4,15 @@ A working pilot for Ghanaian basic schools, built with Next.js 16, React 19, Sup
 
 ## Accounts and responsibilities
 
-| Account         | Access                                                                                                     | Who grants it                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Administrator   | School settings, staff accounts, learner register/imports, classes, subjects, assignments, marks and terms | Platform owner creates the first school administrator; an administrator can add colleagues |
-| Headmaster      | Learner register/imports, classes, school-wide reports, headmaster remarks and term management             | School administrator                                                                       |
-| Class teacher   | Marks, attendance, class remarks and reports for assigned classes                                          | School administrator assigns the class                                                     |
-| Subject teacher | Marks for assigned class/subject combinations                                                              | School administrator assigns the subject and class                                         |
+| Account                | Access                                                                                                                     | Who grants it                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Platform Administrator | Create/edit schools, review requests, activate/deactivate workspaces, reversible deletion/restoration and platform history | Database-controlled platform operator permission                                           |
+| Administrator          | School settings, staff accounts, learner register/imports, classes, subjects, assignments, marks and terms                 | Platform owner creates the first school administrator; an administrator can add colleagues |
+| Headmaster             | Learner register/imports, classes, school-wide reports, headmaster remarks and term management                             | School administrator                                                                       |
+| Class teacher          | Marks, attendance, class remarks and reports for assigned classes                                                          | School administrator assigns the class                                                     |
+| Subject teacher        | Marks for assigned class/subject combinations                                                                              | School administrator assigns the subject and class                                         |
 
-One staff account can also hold teaching assignments beyond its primary role. The platform owner has a separate, database-controlled permission for reviewing new school requests; being a school administrator alone does not grant it. Staff cannot grant themselves roles through their profile or Auth metadata.
+One staff account can also hold teaching assignments beyond its primary role. The platform owner has a separate, database-controlled permission for reviewing new school requests and managing the Schools directory; being a school administrator alone does not grant it. Staff cannot grant themselves roles through their profile or Auth metadata.
 
 The provisioned school is explicitly named **Unity Basic School — Demonstration**, with fictional `DEMO` learners. Initial passwords are supplied privately, never in this repository or on the login page. All initial/reset passwords require replacement before school data is available. Staff management generates a password for private handover; it does **not** send invitations or password emails. Use actual staff email addresses when onboarding a real school.
 
@@ -27,6 +28,18 @@ The provisioned school is explicitly named **Unity Basic School — Demonstratio
 Administrators and headmasters can delete unused classes and learners. Database guards prevent deleting any learner with marks, attendance, remarks, behaviour records or archived reports, and prevent deleting classes with learners, subject assignments, marks or report history. Use **Withdraw** to retain a learner’s history and **Restore** to return them to the active list. School settings, subject administration and staff account/role management remain administrator-only.
 
 Public totals come from a dedicated aggregate table. Public visitors cannot read learners, staff or requests. The landing page and open workspaces refresh on focus and every 30 seconds; a save refreshes the current workspace immediately. Totals include the explicitly labelled demonstration school.
+
+## Platform school management
+
+Platform Administrators open **Schools** in the sidebar. Existing approved schools appear automatically, with contact details, administrator contacts and learner/class/staff counts. Search and status filters use pages of 25 schools.
+
+- **Add school** creates an isolated workspace, its first administrator and initial academic term. Choose Active or Inactive during creation. Save the initial credentials for private handover; no email is sent. Approval through School requests uses the same transaction for the school, membership, term, audit event and approval update.
+- **Edit details** changes school identity/contact information. It does not change staff sign-in emails, grading rules or academic history.
+- **Deactivate** requires a reason and blocks school data reads/writes through live database membership checks, including existing JWTs. The Edge Function also rejects school staff operations. Signed-in users see an inactive-workspace page on the next refresh (up to 30 seconds); they can still replace an initial password. Reactivation restores each staff member's previous permissions, respecting individually inactive accounts.
+- **Delete school** requires its exact name and a reason. This is a reversible deletion: the school leaves the current directory and staff lose access, but accounts, learners and reports remain stored. Find it under **Deleted**, choose **Restore**, then **Activate** when ready. There is no permanent purge button.
+- **History** shows the latest 50 platform changes and their actor, time and reason. Existing schools begin with an empty history. Direct audit writes/deletion are denied, including to platform operators.
+
+Platform authority is independent of school activation, so suspending the owner's own school does not lock them out of Schools or School requests. It still blocks that school's academic data. Public totals include only active, nondeleted schools and their classes/active learners. No existing school's status is changed by the migration.
 
 ## Local development
 
@@ -56,6 +69,8 @@ Authenticated data operations use the user's Supabase session and Row Level Secu
 
 - `tests/core.test.ts`: grade boundaries, ranking ties, import identifiers, duplicates and invalid files.
 - `tests/permissions.sql`: transaction-scoped role, school isolation, forbidden mutations, attendance validation, password setup/deactivation and term/archive tests. Run with a database administrator; it rolls back every fixture. Do not remove the final rollback.
+- `tests/platform-schools.sql`: platform-only creation/editing, activation, suspension, reversible deletion, restoration, audit integrity and existing-token restrictions. Also fully rolled back.
+- `tests/school-admin.test.ts`: Edge handler authorization and provisioning/cleanup checks with controlled Auth/database adapters, without live credentials.
 - `tests/public.spec.ts`: desktop/mobile public navigation and protected route smoke checks using Playwright. `npm run test:browser` requires a running production build's browser dependencies; the config starts the app automatically.
 - `docs/verification.md`: checks performed for this implementation and remaining visual verification limits.
 
@@ -63,4 +78,4 @@ The GitHub-connected Vercel project builds with `npm run build`. Feature branche
 
 ## Pilot boundaries
 
-Review grading rules, report wording and Privacy/Terms with each participating school before issuing official reports. The school should approve access and the use of learner data. PDF averages use entered subjects, so verify completeness before closing a term. This pilot does not yet provide automatic learner promotion, institution-specific grading scales, an audit-event UI, or a self-service email recovery flow. Keep appropriate independent exports/backups and choose an email provider before enabling invitation/recovery email. Free hosting/database quotas and availability still apply.
+Review grading rules, report wording and Privacy/Terms with each participating school before issuing official reports. The school should approve access and the use of learner data. PDF averages use entered subjects, so verify completeness before closing a term. This pilot does not yet provide automatic learner promotion, institution-specific grading scales, a complete academic-change audit trail, or a self-service email recovery flow. Keep appropriate independent exports/backups and choose an email provider before enabling invitation/recovery email. Free hosting/database quotas and availability still apply.
