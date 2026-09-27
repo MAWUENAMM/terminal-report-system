@@ -85,8 +85,8 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="flex items-center justify-center px-5 py-12 sm:px-8">
-          <div className="w-full max-w-[400px] animate-fade-up">
+        <section className="flex min-w-0 items-center justify-center px-4 py-8 sm:px-8 sm:py-12">
+          <div className="w-full max-w-[400px] min-w-0 animate-fade-up">
             <Link
               href="/"
               className="mb-10 inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-ink"
@@ -95,22 +95,30 @@ export default function LoginPage() {
               Back
             </Link>
 
-            <div className="mb-8 flex items-center gap-3 lg:hidden">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--g-green)] text-white">
+            <div
+              className="mb-8 flex items-center gap-3 lg:hidden"
+              aria-label="EduReport"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--g-green)] text-white shadow-sm">
                 <GraduationCap size={20} />
               </div>
-              <span className="font-semibold">EduReport</span>
+              <div className="min-w-0">
+                <span className="block truncate font-semibold">EduReport</span>
+                <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Ghana Basic Schools
+                </span>
+              </div>
             </div>
 
             <div className="eyebrow">Welcome</div>
-            <h2 className="font-display mt-2 text-3xl font-medium tracking-[-0.02em]">
+            <h2 className="font-display mt-2 text-[2rem] font-medium leading-tight tracking-[-0.02em] sm:text-3xl">
               Sign in to your workspace
             </h2>
             <p className="mt-2 text-sm text-muted">
               Enter your school email to continue.
             </p>
 
-            <form onSubmit={handleLogin} className="surface mt-8 rounded-2xl p-6">
+            <form onSubmit={handleLogin} className="surface mt-7 rounded-2xl p-4 sm:mt-8 sm:p-6">
               <label className="mb-1.5 block text-sm font-medium">Email</label>
               <input
                 className="field"
@@ -136,7 +144,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-5 rounded-2xl border border-line bg-white p-4">
+            <div className="mt-4 rounded-2xl border border-line bg-white p-3.5 sm:mt-5 sm:p-4">
               <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--g-green)]">
                 Quick access
               </div>
