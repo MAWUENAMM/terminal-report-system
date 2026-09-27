@@ -14,7 +14,7 @@ import { store } from "@/lib/store";
 const HERO_IMG =
   "https://raw.githubusercontent.com/MAWUENAMM/terminal-report-system/main/hero-students.jpg";
 
-const DEMO = [
+const ACCOUNTS = [
   { role: "Administrator", email: "admin@school.edu.gh", note: "Full system access" },
   { role: "Headteacher", email: "head@school.edu.gh", note: "School oversight" },
   { role: "Class Teacher", email: "teacher@school.edu.gh", note: "Assessment & reports" },
@@ -33,7 +33,7 @@ export default function LoginPage() {
     e.preventDefault();
     const user = store.getUsers().find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!user) {
-      setError("Account not found. Choose a demonstration role below.");
+      setError("No account found for this email. Select a role below or check the address.");
       return;
     }
     store.setCurrentUser(user);
@@ -44,7 +44,6 @@ export default function LoginPage() {
     <main className="min-h-screen bg-paper">
       <div className="kente-bar" />
       <div className="grid min-h-[calc(100vh-4px)] lg:grid-cols-2">
-        {/* Left panel — Ghana students photo */}
         <section className="relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-16">
           <img
             src={HERO_IMG}
@@ -82,11 +81,10 @@ export default function LoginPage() {
 
           <div className="relative flex items-center gap-2 text-xs text-white/50">
             <Shield size={14} className="text-[var(--g-gold)]" />
-            Role-based access · Demonstration environment
+            Role-based access · Secure session
           </div>
         </section>
 
-        {/* Right panel — form */}
         <section className="flex items-center justify-center px-5 py-12 sm:px-8">
           <div className="w-full max-w-[400px] animate-fade-up">
             <Link
@@ -109,7 +107,7 @@ export default function LoginPage() {
               Sign in to your workspace
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Use a demonstration account to explore the full term workflow.
+              Enter your school email to continue.
             </p>
 
             <form onSubmit={handleLogin} className="surface mt-8 rounded-2xl p-6">
@@ -124,10 +122,7 @@ export default function LoginPage() {
               />
 
               <label className="mb-1.5 mt-4 block text-sm font-medium">Password</label>
-              <input className="field" type="password" defaultValue="demo123" />
-              <p className="mt-1.5 text-[11px] text-muted">
-                Prototype mode — any password is accepted for demo accounts.
-              </p>
+              <input className="field" type="password" defaultValue="" placeholder="Enter password" />
 
               {error && (
                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
@@ -136,17 +131,17 @@ export default function LoginPage() {
               )}
 
               <button type="submit" className="btn-primary mt-6 w-full">
-                Continue
+                Sign in
                 <ArrowRight size={16} />
               </button>
             </form>
 
             <div className="mt-5 rounded-2xl border border-line bg-white p-4">
               <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--g-green)]">
-                Demonstration roles
+                Quick access
               </div>
               <div className="mt-3 space-y-1.5">
-                {DEMO.map((d) => (
+                {ACCOUNTS.map((d) => (
                   <button
                     key={d.email}
                     type="button"
