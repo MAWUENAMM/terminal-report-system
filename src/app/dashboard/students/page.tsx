@@ -1,484 +1,381 @@
 "use client";
-
-import { useEffect, useMemo, useState, useRef } from "react";
-import { store } from "@/lib/store";
-import { Student, Class } from "@/types";
-import { formatName } from "@/lib/utils";
-import { v4 as uuidv4 } from "uuid";
-import { Plus, Search, Pencil, X, CheckCircle2, AlertCircle } from "lucide-react";
-
-export default function StudentsPage() {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [filter, setFilter] = useState("");
-  const [classFilter, setClassFilter] = useState("all");
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Student | null>(null);
-  const [formError, setFormError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [form, setForm] = useState({
-    admissionNumber: "",
-    firstName: "",
-    lastName: "",
-    otherNames: "",
-    gender: "M" as "M" | "F",
-    dateOfBirth: "",
-    classId: "",
-    guardianName: "",
-    guardianPhone: "",
-    photoUrl: "",
-  });
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  function refresh() {
-    store.seed();
-    setStudents(store.getStudents());
-    setClasses(store.getClasses());
-  }
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  useEffect(() => {
-    if (!showForm) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowForm(false);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showForm]);
-
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return students
-      .filter((s) => s.status === "ACTIVE")
-      .filter((s) => (classFilter === "all" ? true : s.classId === classFilter))
-      .filter((s) => {
-        if (!q) return true;
-        const name = `${s.firstName} ${s.lastName} ${s.otherNames || ""}`.toLowerCase();
-        return (
-          name.includes(q) ||
-          s.admissionNumber.toLowerCase().includes(q) ||
-          (s.guardianName || "").toLowerCase().includes(q)
-        );
-      });
-  }, [students, filter, classFilter]);
-
-  function openNew() {
-    setEditing(null);
-    setForm({
-      admissionNumber: "",
-      firstName: "",
-      lastName: "",
-      otherNames: "",
-      gender: "M",
-      dateOfBirth: "",
-      classId: classes[0]?.id || "",
-      guardianName: "",
-      guardianPhone: "",
-      photoUrl: "",
-    });
-    setFormError("");
-    setShowForm(true);
-  }
-
-  function openEdit(s: Student) {
-    setEditing(s);
-    setForm({
-      admissionNumber: s.admissionNumber,
-      firstName: s.firstName,
-      lastName: s.lastName,
-      otherNames: s.otherNames || "",
-      gender: s.gender,
-      dateOfBirth: s.dateOfBirth || "",
-      classId: s.classId,
-      guardianName: s.guardianName || "",
-      guardianPhone: s.guardianPhone || "",
-      photoUrl: s.photoUrl || "",
-    });
-    setFormError("");
-    setShowForm(true);
-  }
-
-  function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      setFormError("Please choose a photo smaller than 2 MB.");
-      e.target.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, photoUrl: reader.result as string }));
-    reader.readAsDataURL(file);
-  }
-
-  function saveStudent(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-
-    const admissionNumber = form.admissionNumber.trim();
-    const firstName = form.firstName.trim();
-    const lastName = form.lastName.trim();
-
-    if (!admissionNumber || !firstName || !lastName || !form.classId) {
-      setFormError("Complete all required fields before saving.");
-      return;
-    }
-
-    const all = store.getStudents();
-    const duplicate = all.some(
+import { useState } from "react";
+import { useWorkspace } from "@/components/workspace";
+import { PageHeader, Field, Modal, Empty } from "@/components/ui";
+import { saveRows } from "@/lib/api";
+import { fullName, type Student } from "@/lib/models";
+import { readStudentImport, type ImportedStudent } from "@/lib/student-import";
+export default function Students() {
+  const { data: w, run, busy } = useWorkspace(),
+    [query, setQuery] = useState(""),
+    [classFilter, setClassFilter] = useState(""),
+    [draft, setDraft] = useState<Partial<Student> | null>(null),
+    [importOpen, setImportOpen] = useState(false),
+    [preview, setPreview] = useState<ImportedStudent[]>([]),
+    [errors, setErrors] = useState<string[]>([]),
+    [reading, setReading] = useState(false);
+  const admin = w.profile.role === "ADMIN",
+    visible = w.students.filter(
       (s) =>
-        s.id !== editing?.id &&
-        s.admissionNumber.trim().toLowerCase() === admissionNumber.toLowerCase()
+        (!classFilter || s.class_id === classFilter) &&
+        `${fullName(s)} ${s.admission_number}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
     );
-
-    if (duplicate) {
-      setFormError("That admission number is already assigned to another student.");
-      return;
-    }
-
-    const normalized = {
-      ...form,
-      admissionNumber,
-      firstName,
-      lastName,
-      otherNames: form.otherNames.trim() || undefined,
-      guardianName: form.guardianName.trim() || undefined,
-      guardianPhone: form.guardianPhone.trim() || undefined,
-      dateOfBirth: form.dateOfBirth || undefined,
-      photoUrl: form.photoUrl || undefined,
-    };
-
-    if (editing) {
-      store.saveStudents(
-        all.map((s) => (s.id === editing.id ? { ...s, ...normalized } : s))
-      );
-    } else {
-      store.saveStudents([
-        ...all,
-        {
-          id: uuidv4(),
-          ...normalized,
-          status: "ACTIVE" as const,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
-    }
-
-    setShowForm(false);
-    setSuccessMessage(editing ? "Student profile updated successfully." : "Student added successfully.");
-    window.setTimeout(() => setSuccessMessage(""), 3500);
-    refresh();
-  }
-
-  function className(id: string) {
-    return classes.find((c) => c.id === id)?.name || id;
-  }
-
   return (
-    <div>
-      {successMessage && (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-[var(--g-green)]/20 bg-[var(--g-green)]/5 px-4 py-3 text-sm text-[var(--g-green)]" role="status">
-          <CheckCircle2 size={17} />
-          <span className="font-medium">{successMessage}</span>
-        </div>
-      )}
-
-      <div className="animate-fade-up">
-      <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="eyebrow">Student information</div>
-          <h1 className="page-title mt-2">Students</h1>
-          <p className="mt-2 text-sm text-muted">
-            Maintain learner profiles, class placement and guardian information.
-          </p>
-        </div>
-        <button onClick={openNew} className="btn-primary !py-2.5 w-fit">
-          <Plus size={16} />
-          Add student
-        </button>
-      </div>
-
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2 rounded-full border border-line bg-white px-3.5 py-2.5">
-          <Search size={15} className="text-muted" />
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter by name, admission number…"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
-          />
-        </div>
+    <>
+      <PageHeader
+        eyebrow="Learner records"
+        title="Learners"
+        description={
+          admin
+            ? "Register learners, maintain their class placement or import an existing school list."
+            : "View the learners in your assigned classes. Your administrator manages enrolment."
+        }
+      >
+        {admin && (
+          <div className="flex gap-2">
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setImportOpen(true);
+                setPreview([]);
+                setErrors([]);
+              }}
+            >
+              Import CSV / Excel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() =>
+                setDraft({
+                  first_name: "",
+                  last_name: "",
+                  admission_number: "",
+                  gender: "F",
+                  class_id: w.classes[0]?.id || "",
+                  status: "ACTIVE",
+                })
+              }
+            >
+              Add learner
+            </button>
+          </div>
+        )}
+      </PageHeader>
+      <div className="flex flex-wrap gap-3">
+        <input
+          aria-label="Search learners"
+          className="field max-w-sm"
+          placeholder="Search name or admission number…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <select
+          aria-label="Filter class"
+          className="field max-w-xs"
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
-          className="rounded-full border border-line bg-white px-4 py-2.5 text-sm outline-none focus:border-[var(--g-green)]"
         >
-          <option value="all">All classes</option>
-          {classes.map((c) => (
+          <option value="">All assigned classes</option>
+          {w.classes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </select>
       </div>
-
-      <div className="surface overflow-hidden rounded-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line bg-paper/80">
+      {visible.length ? (
+        <div className="surface overflow-x-auto rounded-2xl">
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Profile
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Admission no.
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Student
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Gender
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Class
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Actions
-                </th>
+                <th>Learner</th>
+                <th>Admission no.</th>
+                <th>Class</th>
+                <th>Gender</th>
+                <th>Status</th>
+                {admin && <th />}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => (
-                <tr key={s.id} className="border-b border-line/60 hover:bg-paper/60">
-                  <td className="px-5 py-3">
-                    {s.photoUrl ? (
-                      <img
-                        src={s.photoUrl}
-                        alt=""
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--g-green)]/10 text-xs font-semibold text-[var(--g-green)]">
-                        {s.firstName[0]}
-                        {s.lastName[0]}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs text-muted">{s.admissionNumber}</td>
-                  <td className="px-5 py-3 font-medium">
-                    {formatName(s.firstName, s.lastName, s.otherNames)}
-                  </td>
-                  <td className="px-5 py-3">{s.gender === "M" ? "Male" : "Female"}</td>
-                  <td className="px-5 py-3">{className(s.classId)}</td>
-                  <td className="px-5 py-3">
-                    <button
-                      onClick={() => openEdit(s)}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-[var(--g-green)] hover:underline"
-                    >
-                      <Pencil size={13} />
-                      Edit
-                    </button>
-                  </td>
+              {visible.map((s) => (
+                <tr key={s.id}>
+                  <td className="font-medium">{fullName(s)}</td>
+                  <td>{s.admission_number}</td>
+                  <td>{w.classes.find((c) => c.id === s.class_id)?.name}</td>
+                  <td>{s.gender}</td>
+                  <td>{s.status.toLowerCase()}</td>
+                  {admin && (
+                    <td>
+                      <button
+                        className="font-semibold text-[var(--g-green)]"
+                        onClick={() => setDraft(s)}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-muted">
-                    No students match your filters.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
-        <div className="border-t border-line px-5 py-3 text-xs text-muted">
-          Showing {filtered.length} of {students.filter((s) => s.status === "ACTIVE").length} students
-        </div>
-      </div>
-
-      </div>
-
-      {showForm && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-form-title"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setShowForm(false);
-          }}
+      ) : (
+        <Empty>
+          No learners match this view.{" "}
+          {admin ? "Add classes first, then register or import learners." : ""}
+        </Empty>
+      )}
+      {draft && (
+        <Modal
+          title={draft.id ? "Edit learner" : "Add learner"}
+          onClose={() => setDraft(null)}
         >
-          <div className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-            <div className="flex items-start justify-between border-b border-line p-6">
-              <div>
-                <div className="eyebrow">Learner profile</div>
-                <h2 id="student-form-title" className="mt-1 text-lg font-semibold">{editing ? "Edit student" : "Add student"}</h2>
-                <p className="mt-1 text-sm text-muted">
-                  {editing ? "Update the learner's details below." : "Create a complete learner profile for the school register."}
-                </p>
+          <form
+            method="post"
+            className="space-y-5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const ok = await run(
+                () =>
+                  saveRows("students", [
+                    {
+                      ...draft,
+                      date_of_birth: draft.date_of_birth || null,
+                      admission_number: draft.admission_number?.trim(),
+                      school_id: w.school.id,
+                    },
+                  ]),
+                "Learner saved.",
+              );
+              if (ok) setDraft(null);
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["admission_number", "Admission number"],
+                  ["first_name", "First name"],
+                  ["last_name", "Last name"],
+                  ["other_names", "Other names"],
+                ] as const
+              ).map(([key, label]) => (
+                <Field key={key} label={label}>
+                  <input
+                    className="field"
+                    required={key !== "other_names"}
+                    maxLength={key === "admission_number" ? 60 : 100}
+                    value={draft[key] || ""}
+                    onChange={(e) =>
+                      setDraft({ ...draft, [key]: e.target.value })
+                    }
+                  />
+                </Field>
+              ))}
+              <Field label="Gender">
+                <select
+                  className="field"
+                  value={draft.gender}
+                  onChange={(e) =>
+                    setDraft({ ...draft, gender: e.target.value as "M" | "F" })
+                  }
+                >
+                  <option value="F">Female</option>
+                  <option value="M">Male</option>
+                </select>
+              </Field>
+              <Field label="Class">
+                <select
+                  className="field"
+                  required
+                  value={draft.class_id}
+                  onChange={(e) =>
+                    setDraft({ ...draft, class_id: e.target.value })
+                  }
+                >
+                  <option value="">Choose class</option>
+                  {w.classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Date of birth">
+                <input
+                  className="field"
+                  type="date"
+                  value={draft.date_of_birth || ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, date_of_birth: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  className="field"
+                  value={draft.status}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      status: e.target.value as Student["status"],
+                    })
+                  }
+                >
+                  {["ACTIVE", "TRANSFERRED", "WITHDRAWN"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Guardian name">
+                <input
+                  className="field"
+                  maxLength={150}
+                  value={draft.guardian_name || ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, guardian_name: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Guardian phone">
+                <input
+                  className="field"
+                  type="tel"
+                  maxLength={35}
+                  value={draft.guardian_phone || ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, guardian_phone: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <button disabled={busy} className="btn-primary">
+              Save learner
+            </button>
+          </form>
+        </Modal>
+      )}
+      {importOpen && (
+        <Modal title="Import learners" onClose={() => setImportOpen(false)}>
+          <p className="text-sm leading-6 text-muted">
+            Use the template headers. Class names must match your existing
+            classes. Admission numbers should be stored as text in Excel to
+            preserve leading zeros. Each import is validated before any records
+            are saved.
+          </p>
+          <a
+            href="/student-import-template.csv"
+            download
+            className="btn-secondary my-4"
+          >
+            Download CSV template
+          </a>
+          <Field label="Choose CSV or Excel file">
+            <input
+              className="field"
+              type="file"
+              accept=".csv,.xlsx"
+              disabled={reading || busy}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setReading(true);
+                setPreview([]);
+                setErrors([]);
+                try {
+                  const result = await readStudentImport(
+                    file,
+                    w.classes,
+                    w.students,
+                  );
+                  setPreview(result.rows);
+                  setErrors(result.errors);
+                } catch (e) {
+                  setErrors([
+                    e instanceof Error ? e.message : "File could not be read.",
+                  ]);
+                } finally {
+                  setReading(false);
+                }
+              }}
+            />
+          </Field>
+          {reading && <p className="mt-4 text-sm">Checking your file…</p>}
+          {errors.length > 0 && (
+            <div
+              role="alert"
+              className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800"
+            >
+              <p className="font-semibold">
+                Fix these issues and select the file again. Nothing has been
+                imported.
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {errors.slice(0, 15).map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+              {errors.length > 15 && (
+                <p className="mt-2">And {errors.length - 15} more issues.</p>
+              )}
+            </div>
+          )}
+          {preview.length > 0 && (
+            <>
+              <h3 className="mt-5 font-semibold">
+                {preview.length} valid learners · preview of first 10
+              </h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Admission</th>
+                      <th>Name</th>
+                      <th>Class</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.slice(0, 10).map((s) => (
+                      <tr key={s.admission_number}>
+                        <td>{s.admission_number}</td>
+                        <td>
+                          {s.first_name} {s.last_name}
+                        </td>
+                        <td>
+                          {w.classes.find((c) => c.id === s.class_id)?.name}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
               <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                aria-label="Close student form"
-                className="rounded-full p-2 text-muted transition hover:bg-paper hover:text-ink"
+                className="btn-primary mt-5"
+                disabled={busy || !!errors.length}
+                onClick={async () => {
+                  if (
+                    await run(
+                      () =>
+                        saveRows(
+                          "students",
+                          preview.map((s) => ({
+                            ...s,
+                            school_id: w.school.id,
+                          })),
+                        ),
+                      `${preview.length} learners imported.`,
+                    )
+                  )
+                    setImportOpen(false);
+                }}
               >
-                <X size={18} />
+                Import {preview.length} learners
               </button>
-            </div>
-            <form onSubmit={saveStudent} className="space-y-5 p-6">
-              {formError && (
-                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-                  <AlertCircle size={17} className="mt-0.5 shrink-0" />
-                  <span>{formError}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-4">
-                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-paper">
-                  {form.photoUrl ? (
-                    <img src={form.photoUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-xs text-muted">Photo</span>
-                  )}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="text-sm font-medium text-[var(--g-green)] hover:underline"
-                  >
-                    Upload photo
-                  </button>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handlePhoto}
-                  />
-                  <p className="mt-1 text-xs text-muted">Optional. JPEG or PNG.</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Admission no. *</label>
-                  <input
-                    required
-                    value={form.admissionNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, admissionNumber: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Class *</label>
-                  <select
-                    required
-                    value={form.classId}
-                    onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value }))}
-                    className="field"
-                  >
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">First name *</label>
-                  <input
-                    required
-                    value={form.firstName}
-                    onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Last name *</label>
-                  <input
-                    required
-                    value={form.lastName}
-                    onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Other names</label>
-                <input
-                  value={form.otherNames}
-                  onChange={(e) => setForm((f) => ({ ...f, otherNames: e.target.value }))}
-                  className="field"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Date of birth</label>
-                  <input
-                    type="date"
-                    value={form.dateOfBirth}
-                    onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Gender *</label>
-                  <select
-                    value={form.gender}
-                    onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value as "M" | "F" }))}
-                    className="field"
-                  >
-                    <option value="M">Male</option>
-                    <option value="F">Female</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Guardian name</label>
-                  <input
-                    value={form.guardianName}
-                    onChange={(e) => setForm((f) => ({ ...f, guardianName: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Guardian phone</label>
-                  <input
-                    value={form.guardianPhone}
-                    onChange={(e) => setForm((f) => ({ ...f, guardianPhone: e.target.value }))}
-                    className="field"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="submit" className="btn-primary flex-1">
-                  {editing ? "Save changes" : "Add student"}
-                </button>
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </>
+          )}
+        </Modal>
       )}
-    </div>
+    </>
   );
 }

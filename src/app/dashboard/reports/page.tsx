@@ -1,521 +1,330 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
-import {
-  CheckCircle2,
-  Download,
-  FileText,
-  Search,
-} from "lucide-react";
-import { store } from "@/lib/store";
-import {
-  Class,
-  Student,
-  Subject,
-  School,
-  ReportCardData,
-} from "@/types";
-import {
-  computeOverallAverage,
-  getGrade,
-  computePositions,
-} from "@/lib/grading";
-import { formatName } from "@/lib/utils";
-import { generateReportPDF } from "@/lib/report-pdf";
-import { v4 as uuidv4 } from "uuid";
-
-export default function ReportsPage() {
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [school, setSchool] = useState<School | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedClass, setSelectedClass] = useState("");
-  const [term, setTerm] = useState<1 | 2 | 3>(1);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [query, setQuery] = useState("");
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    store.seed();
-
-    const cls = store.getClasses();
-    const sch = store.getSchool();
-
-    setClasses(cls);
-    setSchool(sch);
-    setSubjects(store.getSubjects());
-
-    if (cls.length) setSelectedClass(cls[0].id);
-    if (sch) setTerm(sch.currentTerm);
-  }, []);
-
-  useEffect(() => {
-    if (selectedClass) {
-      setStudents(store.getStudentsByClass(selectedClass));
-    }
-  }, [selectedClass]);
-
-  function showMessage(text: string) {
-    setMessage(text);
-    window.setTimeout(() => setMessage(""), 3500);
-  }
-
-  function buildReportData(student: Student): ReportCardData | null {
-    if (!school) return null;
-
-    const cls = classes.find((item) => item.id === selectedClass);
-    if (!cls) return null;
-
-    const classScores = store
-      .getScoresByClassTerm(selectedClass, term, school.academicYear);
-
-    const scores = classScores.filter((score) => score.studentId === student.id);
-    if (scores.length === 0) return null;
-
-    const allStudents = store.getStudentsByClass(selectedClass);
-    const studentAverages = allStudents
-      .map((item) => {
-        const itemScores = classScores.filter(
-          (score) => score.studentId === item.id
-        );
-        return {
-          studentId: item.id,
-          total: computeOverallAverage(itemScores),
-        };
-      })
-      .filter((item) => item.total > 0);
-
-    const positionMap = computePositions(studentAverages);
-    const overallAverage = computeOverallAverage(scores);
-
-    return {
-      student,
-      school,
-      class: cls,
-      scores,
-      attendance: store.getAttendance().find(
-        (item) =>
-          item.studentId === student.id &&
-          item.term === term &&
-          item.academicYear === school.academicYear
-      ),
-      affective: store.getAffective().find(
-        (item) =>
-          item.studentId === student.id &&
-          item.term === term &&
-          item.academicYear === school.academicYear
-      ),
-      remarks: store.getRemarks().find(
-        (item) =>
-          item.studentId === student.id &&
-          item.term === term &&
-          item.academicYear === school.academicYear
-      ),
-      overallAverage,
-      overallGrade: getGrade(overallAverage).grade,
-      overallPosition: positionMap.get(student.id),
-      totalStudents: allStudents.length,
-    };
-  }
-
-  function downloadOne(student: Student) {
-    const data = buildReportData(student);
-
-    if (!data) {
-      showMessage(
-        `No assessment scores found for ${formatName(
-          student.firstName,
-          student.lastName
-        )}.`
-      );
-      return;
-    }
-
-    generateReportPDF(data, subjects).save(
-      `Report_${student.admissionNumber}_${school?.academicYear}_T${term}.pdf`
+import { useState } from "react";
+import { useWorkspace } from "@/components/workspace";
+import { PageHeader, Field, Modal, Empty, Restricted } from "@/components/ui";
+import { browserClient } from "@/lib/supabase/client";
+import { fullName, isLeader, type Student } from "@/lib/models";
+import { currentSnapshot, downloadReport } from "@/lib/reporting";
+export default function Reports() {
+  const { data: w, run, busy } = useWorkspace(),
+    [classId, setClassId] = useState(""),
+    [archive, setArchive] = useState(false),
+    [archiveTerm, setArchiveTerm] = useState(""),
+    [student, setStudent] = useState<Student | null>(null),
+    [notes, setNotes] = useState<Record<string, string | number>>({});
+  const leader = isLeader(w.profile.role),
+    classes = w.classes.filter(
+      (c) => leader || c.class_teacher_id === w.profile.id,
+    ),
+    selected = classes.some((c) => c.id === classId)
+      ? classId
+      : classes[0]?.id || "",
+    own =
+      w.profile.role === "ADMIN" ||
+      classes.find((c) => c.id === selected)?.class_teacher_id === w.profile.id;
+  if (!leader && !classes.length) return <Restricted />;
+  const open = w.terms.some(
+      (t) =>
+        t.academic_year === w.school.academic_year &&
+        t.term === w.school.current_term &&
+        t.status === "OPEN",
+    ),
+    students = w.students.filter(
+      (s) => s.class_id === selected && s.status === "ACTIVE",
+    ),
+    archives = w.archives.filter(
+      (a) =>
+        (!selected || a.class_id === selected) &&
+        (!archiveTerm || `${a.academic_year}:${a.term}` === archiveTerm),
     );
-
-    showMessage(
-      `Downloaded report for ${formatName(
-        student.firstName,
-        student.lastName
-      )}.`
-    );
-  }
-
-  function downloadAll() {
-    let count = 0;
-
-    students.forEach((student) => {
-      const data = buildReportData(student);
-
-      if (data) {
-        generateReportPDF(data, subjects).save(
-          `Report_${student.admissionNumber}_${school?.academicYear}_T${term}.pdf`
-        );
-        count += 1;
-      }
+  function edit(s: Student) {
+    const x = currentSnapshot(w, s);
+    setStudent(s);
+    setNotes({
+      days_present: x.attendance?.days_present || 0,
+      total_days: x.attendance?.total_days || 0,
+      conduct: x.affective?.conduct || "",
+      interest: x.affective?.interest || "",
+      attitude: x.affective?.attitude || "",
+      talents: x.affective?.talents || "",
+      class_teacher_remark: x.remarks?.class_teacher_remark || "",
+      headteacher_remark: x.remarks?.headteacher_remark || "",
     });
-
-    showMessage(
-      count
-        ? `Generated ${count} report ${count === 1 ? "card" : "cards"}.`
-        : "No completed reports are available for this class yet."
-    );
   }
-
-  function ensureDemoRemarks() {
-    if (!school) return;
-
-    const remarks = store.getRemarks();
-    const attendance = store.getAttendance();
-    const affective = store.getAffective();
-    let changed = false;
-
-    students.forEach((student) => {
-      if (
-        !remarks.find(
-          (item) =>
-            item.studentId === student.id &&
-            item.term === term &&
-            item.academicYear === school.academicYear
-        )
-      ) {
-        remarks.push({
-          id: uuidv4(),
-          studentId: student.id,
-          term,
-          academicYear: school.academicYear,
-          classTeacherRemark:
-            "A hardworking pupil who participates actively in class. Keep it up.",
-          headteacherRemark:
-            "Promising performance. Continue to work hard.",
-        });
-        changed = true;
-      }
-
-      if (
-        !attendance.find(
-          (item) =>
-            item.studentId === student.id &&
-            item.term === term &&
-            item.academicYear === school.academicYear
-        )
-      ) {
-        attendance.push({
-          id: uuidv4(),
-          studentId: student.id,
-          term,
-          academicYear: school.academicYear,
-          daysPresent: 55 + Math.floor(Math.random() * 10),
-          totalDays: 65,
-        });
-        changed = true;
-      }
-
-      if (
-        !affective.find(
-          (item) =>
-            item.studentId === student.id &&
-            item.term === term &&
-            item.academicYear === school.academicYear
-        )
-      ) {
-        affective.push({
-          id: uuidv4(),
-          studentId: student.id,
-          term,
-          academicYear: school.academicYear,
-          conduct: "Good",
-          interest: "High",
-          attitude: "Positive",
-          talents: "Sports, Music",
-        });
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      store.saveRemarks(remarks);
-      store.saveAttendance(attendance);
-      store.saveAffective(affective);
-      showMessage("Demo attendance, conduct and remarks added.");
-    } else {
-      showMessage("Demo information is already prepared for this class.");
-    }
-  }
-
-  const filteredStudents = useMemo(() => {
-    const value = query.trim().toLowerCase();
-
-    if (!value) return students;
-
-    return students.filter((student) => {
-      const name = formatName(
-        student.firstName,
-        student.lastName,
-        student.otherNames
-      ).toLowerCase();
-
-      return (
-        name.includes(value) ||
-        student.admissionNumber.toLowerCase().includes(value)
-      );
-    });
-  }, [students, query]);
-
-  const completedCount = students.filter((student) =>
-    school
-      ? store
-          .getScoresByClassTerm(selectedClass, term, school.academicYear)
-          .some((score) => score.studentId === student.id)
-      : false
-  ).length;
-
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <div className="eyebrow">Report centre</div>
-          <h1 className="page-title mt-2">Terminal Reports</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted">
-            Generate polished terminal report cards with learner performance,
-            attendance, affective records and school remarks.
-          </p>
+    <>
+      <PageHeader
+        eyebrow="Reporting"
+        title="Reports & attendance"
+        description="Review marks, record attendance and add remarks. Closed-term reports keep a snapshot of the learner, school details and results."
+      />
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="flex gap-2 rounded-full border border-line bg-white p-1">
+          <button
+            className={archive ? "btn-secondary !border-0" : "btn-primary"}
+            onClick={() => setArchive(false)}
+          >
+            Current term
+          </button>
+          <button
+            className={archive ? "btn-primary" : "btn-secondary !border-0"}
+            onClick={() => setArchive(true)}
+          >
+            Report archive
+          </button>
         </div>
-
-        <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-[var(--g-gold)]/30 bg-[var(--g-gold)]/10 px-3 py-2 text-xs font-semibold text-ink">
-          <FileText size={15} />
-          Professional PDF output
-        </div>
-      </header>
-
-      <section className="surface rounded-2xl p-4 md:p-5">
-        <div className="grid gap-4 lg:grid-cols-[1fr_180px_1fr_auto] lg:items-end">
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
-              Class
-            </label>
+        <div className="min-w-48">
+          <Field label="Class">
             <select
-              value={selectedClass}
-              onChange={(event) => setSelectedClass(event.target.value)}
               className="field"
+              value={selected}
+              onChange={(e) => setClassId(e.target.value)}
             >
-              {classes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
-              Term
-            </label>
+          </Field>
+        </div>
+        {archive && (
+          <Field label="Archived term">
             <select
-              value={term}
-              onChange={(event) =>
-                setTerm(Number(event.target.value) as 1 | 2 | 3)
-              }
               className="field"
+              value={archiveTerm}
+              onChange={(e) => setArchiveTerm(e.target.value)}
             >
-              <option value={1}>Term 1</option>
-              <option value={2}>Term 2</option>
-              <option value={3}>Term 3</option>
+              <option value="">All archived terms</option>
+              {w.terms
+                .filter((t) => t.status === "CLOSED")
+                .map((t) => (
+                  <option key={t.id} value={`${t.academic_year}:${t.term}`}>
+                    {t.academic_year} · Term {t.term}
+                  </option>
+                ))}
             </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
-              Find learner
-            </label>
-            <div className="relative">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-              />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="field pl-9"
-                placeholder="Name or admission no."
-              />
-            </div>
-          </div>
-
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row lg:justify-end">
-            <button onClick={ensureDemoRemarks} className="btn-secondary w-full sm:w-auto">
-              Prepare demo data
-            </button>
-            <button
-              onClick={downloadAll}
-              disabled={completedCount === 0}
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download size={15} />
-              Download all
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {message && (
-        <div
-          className="flex items-center gap-2 rounded-xl border border-[var(--g-green)]/15 bg-[var(--g-green)]/5 px-4 py-3 text-sm font-medium text-[var(--g-green)]"
-          role="status"
-        >
-          <CheckCircle2 size={16} />
-          {message}
-        </div>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="surface rounded-2xl p-4">
-          <div className="text-xs text-muted">Class roster</div>
-          <div className="mt-1 text-2xl font-semibold">{students.length}</div>
-          <div className="text-xs text-muted">active learners</div>
-        </div>
-        <div className="surface rounded-2xl p-4">
-          <div className="text-xs text-muted">Reports ready</div>
-          <div className="mt-1 text-2xl font-semibold">{completedCount}</div>
-          <div className="text-xs text-muted">learners with scores</div>
-        </div>
-        <div className="surface rounded-2xl p-4">
-          <div className="text-xs text-muted">Academic period</div>
-          <div className="mt-1 text-2xl font-semibold">
-            T{term}
-          </div>
-          <div className="text-xs text-muted">
-            {school?.academicYear || "—"}
-          </div>
-        </div>
+          </Field>
+        )}
       </div>
-
-      <section className="surface overflow-hidden rounded-2xl">
-        <div className="border-b border-line px-5 py-4">
-          <div className="text-sm font-semibold">Learner report register</div>
-          <div className="mt-1 text-xs text-muted">
-            Download individual report cards or generate all completed reports.
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="border-b border-line bg-paper/80">
-              <tr>
-                <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Learner
-                </th>
-                <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Admission no.
-                </th>
-                <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Completion
-                </th>
-                <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Report
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredStudents.map((student) => {
-                const scoreCount = school
-                  ? store
-                      .getScoresByClassTerm(
-                        selectedClass,
-                        term,
-                        school.academicYear
-                      )
-                      .filter((score) => score.studentId === student.id).length
-                  : 0;
-
-                return (
-                  <tr
-                    key={student.id}
-                    className="border-t border-line/70 transition hover:bg-paper/60"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        {student.photoUrl ? (
-                          <img
-                            src={student.photoUrl}
-                            className="h-9 w-9 rounded-full object-cover"
-                            alt=""
-                          />
-                        ) : (
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--g-green)]/10 text-xs font-semibold text-[var(--g-green)]">
-                            {student.firstName[0]}
-                            {student.lastName[0]}
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-medium text-ink">
-                            {formatName(
-                              student.firstName,
-                              student.lastName,
-                              student.otherNames
-                            )}
-                          </div>
-                          <div className="text-xs text-muted">
-                            {student.gender === "M" ? "Male" : "Female"}
-                          </div>
-                        </div>
-                      </div>
+      {archive ? (
+        archives.length ? (
+          <div className="surface overflow-x-auto rounded-2xl">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Learner</th>
+                  <th>Academic year</th>
+                  <th>Term</th>
+                  <th>Archived</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {archives.map((a) => (
+                  <tr key={a.id}>
+                    <td className="font-medium">
+                      {fullName(a.snapshot.student)}
                     </td>
-
-                    <td className="px-5 py-4 font-mono text-xs text-muted">
-                      {student.admissionNumber}
+                    <td>{a.academic_year}</td>
+                    <td>{a.term}</td>
+                    <td>
+                      {new Date(a.created_at).toLocaleDateString("en-GB")}
                     </td>
-
-                    <td className="px-5 py-4">
-                      <span
-                        className={
-                          "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold " +
-                          (scoreCount > 0
-                            ? "bg-[var(--g-green)]/10 text-[var(--g-green)]"
-                            : "bg-[var(--g-gold)]/15 text-ink")
+                    <td>
+                      <button
+                        className="font-semibold text-[var(--g-green)]"
+                        onClick={() =>
+                          void run(async () => {
+                            const { data, error } = await browserClient()
+                              .from("report_archives")
+                              .select("snapshot")
+                              .eq("id", a.id)
+                              .single();
+                            if (error) throw new Error(error.message);
+                            await downloadReport(data.snapshot);
+                          }, "Archived PDF downloaded.")
                         }
                       >
-                        {scoreCount} subject{scoreCount === 1 ? "" : "s"} entered
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        onClick={() => downloadOne(student)}
-                        disabled={scoreCount === 0}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Download size={13} />
-                        PDF
+                        Download PDF
                       </button>
                     </td>
                   </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>
+            No archived reports in this view. Closing a term creates its
+            permanent report snapshots.
+          </Empty>
+        )
+      ) : students.length ? (
+        <>
+          <div className="surface overflow-x-auto rounded-2xl">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Learner</th>
+                  <th>Subjects scored</th>
+                  <th>Average of entered scores</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s) => {
+                  const snap = currentSnapshot(w, s),
+                    average = snap.scores.length
+                      ? snap.scores.reduce((n, sc) => n + Number(sc.total), 0) /
+                        snap.scores.length
+                      : null;
+                  return (
+                    <tr key={s.id}>
+                      <td className="font-medium">{fullName(s)}</td>
+                      <td>{snap.scores.length}</td>
+                      <td>
+                        {average === null ? "—" : `${average.toFixed(1)}%`}
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap gap-4">
+                          <button
+                            className="font-semibold text-[var(--g-green)]"
+                            onClick={() => edit(s)}
+                          >
+                            {open ? "Attendance & remarks" : "View details"}
+                          </button>
+                          <button
+                            disabled={!snap.scores.length || busy}
+                            onClick={() =>
+                              void run(
+                                () => downloadReport(snap),
+                                "PDF downloaded.",
+                              )
+                            }
+                          >
+                            Download PDF
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs leading-6 text-muted">
+            Current-term PDFs reflect saved entries. Check that all required
+            subjects have scores before closing the term.
+          </p>
+        </>
+      ) : (
+        <Empty>No active learners in this class.</Empty>
+      )}
+      {student && (
+        <Modal
+          title={`Attendance & remarks — ${fullName(student)}`}
+          onClose={() => setStudent(null)}
+        >
+          <form
+            method="post"
+            className="space-y-5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const payload: Record<string, string | number> = {};
+              if (own)
+                for (const k of [
+                  "days_present",
+                  "total_days",
+                  "conduct",
+                  "interest",
+                  "attitude",
+                  "talents",
+                  "class_teacher_remark",
+                ])
+                  payload[k] = notes[k];
+              if (leader) payload.headteacher_remark = notes.headteacher_remark;
+              const ok = await run(async () => {
+                const { error } = await browserClient().rpc(
+                  "save_report_notes",
+                  { learner_id: student.id, notes: payload },
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {students.length === 0 && (
-          <div className="px-6 py-16 text-center text-sm text-muted">
-            No active learners are assigned to this class.
-          </div>
-        )}
-
-        {students.length > 0 && filteredStudents.length === 0 && (
-          <div className="px-6 py-12 text-center">
-            <Search className="mx-auto text-muted/50" />
-            <div className="mt-3 text-sm font-medium">
-              No learners match your search
+                if (error) throw new Error(error.message);
+              }, "Attendance and remarks saved.");
+              if (ok) setStudent(null);
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              {["days_present", "total_days"].map((k) => (
+                <Field
+                  key={k}
+                  label={
+                    k === "days_present" ? "Days present" : "Total school days"
+                  }
+                >
+                  <input
+                    className="field"
+                    type="number"
+                    min={0}
+                    max={366}
+                    step={1}
+                    required
+                    disabled={!own || !open}
+                    value={notes[k]}
+                    onChange={(e) =>
+                      setNotes({ ...notes, [k]: Number(e.target.value) })
+                    }
+                  />
+                </Field>
+              ))}
             </div>
-            <div className="mt-1 text-xs text-muted">
-              Try a different name or admission number.
+            <div className="grid gap-4 sm:grid-cols-2">
+              {["conduct", "interest", "attitude", "talents"].map((k) => (
+                <Field key={k} label={k[0].toUpperCase() + k.slice(1)}>
+                  <input
+                    className="field"
+                    disabled={!own || !open}
+                    maxLength={150}
+                    value={notes[k]}
+                    onChange={(e) =>
+                      setNotes({ ...notes, [k]: e.target.value })
+                    }
+                  />
+                </Field>
+              ))}
             </div>
-          </div>
-        )}
-      </section>
-    </div>
+            <Field label="Class teacher’s remark">
+              <textarea
+                className="field"
+                rows={3}
+                disabled={!own || !open}
+                maxLength={500}
+                value={notes.class_teacher_remark}
+                onChange={(e) =>
+                  setNotes({ ...notes, class_teacher_remark: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Headmaster’s remark">
+              <textarea
+                className="field"
+                rows={3}
+                disabled={!leader || !open}
+                maxLength={500}
+                value={notes.headteacher_remark}
+                onChange={(e) =>
+                  setNotes({ ...notes, headteacher_remark: e.target.value })
+                }
+              />
+            </Field>
+            {open && (
+              <button disabled={busy} className="btn-primary">
+                Save attendance & remarks
+              </button>
+            )}
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }

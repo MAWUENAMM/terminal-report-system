@@ -1,0 +1,5 @@
+project_id = "terminal-report-system"
+[functions.school-admin]
+# The function validates every staff JWT with Auth.getUser itself.
+# Only initial bootstrap uses a hashed, short-lived one-use secret instead.
+verify_jwt = false

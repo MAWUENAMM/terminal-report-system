@@ -1,41 +1,143 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { CheckCircle2, ImagePlus, Save, Settings2 } from "lucide-react";
-import { store } from "@/lib/store";
-import { School } from "@/types";
-
-export default function SettingsPage() {
-  const [school,setSchool]=useState<School|null>(null); const [saved,setSaved]=useState(false);
-  useEffect(()=>{store.seed();setSchool(store.getSchool());},[]);
-  function save(e:React.FormEvent){e.preventDefault();if(school){store.saveSchool(school);setSaved(true);setTimeout(()=>setSaved(false),2200)}}
-  if(!school) return <div className="p-8 text-sm text-slate-500">Loading school settings…</div>;
-  return <div className="space-y-7">
-    <header><div className="eyebrow">Administration</div><h1 className="page-title mt-2">School Settings</h1><p className="mt-2 text-sm text-slate-500">Configure the identity, academic session and assessment rules used throughout the system.</p></header>
-    <form onSubmit={save} className="grid gap-5 xl:grid-cols-[1.4fr_.7fr]">
-      <div className="surface rounded-2xl p-6 md:p-7 space-y-6">
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-5"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Settings2 size={19}/></div><div><h2 className="font-semibold">School profile</h2><p className="text-xs text-slate-400">Information shown on official reports.</p></div></div>
-        <div className="grid gap-5 md:grid-cols-2">
-          <div className="md:col-span-2"><label className="mb-2 block text-sm font-medium">School name</label><input className="field" value={school.name} onChange={e=>setSchool({...school,name:e.target.value})}/></div>
-          <div className="md:col-span-2"><label className="mb-2 block text-sm font-medium">Address</label><input className="field" value={school.address||""} onChange={e=>setSchool({...school,address:e.target.value})}/></div>
-          <div><label className="mb-2 block text-sm font-medium">District</label><input className="field" value={school.district||""} onChange={e=>setSchool({...school,district:e.target.value})}/></div>
-          <div><label className="mb-2 block text-sm font-medium">Region</label><input className="field" value={school.region||""} onChange={e=>setSchool({...school,region:e.target.value})}/></div>
-          <div><label className="mb-2 block text-sm font-medium">Phone</label><input className="field" value={school.phone||""} onChange={e=>setSchool({...school,phone:e.target.value})}/></div>
-          <div><label className="mb-2 block text-sm font-medium">Email</label><input className="field" value={school.email||""} onChange={e=>setSchool({...school,email:e.target.value})}/></div>
-          <div><label className="mb-2 block text-sm font-medium">Headteacher</label><input className="field" value={school.headteacherName||""} onChange={e=>setSchool({...school,headteacherName:e.target.value})}/></div>
-        </div>
-      </div>
-      <div className="space-y-5">
-        <div className="surface rounded-2xl p-6">
-          <div className="eyebrow">Academic session</div><div className="mt-4 grid gap-4"><div><label className="mb-2 block text-sm font-medium">Academic year</label><input className="field" value={school.academicYear} onChange={e=>setSchool({...school,academicYear:e.target.value})}/></div><div><label className="mb-2 block text-sm font-medium">Current term</label><select className="field" value={school.currentTerm} onChange={e=>setSchool({...school,currentTerm:Number(e.target.value) as 1|2|3})}><option value={1}>Term 1</option><option value={2}>Term 2</option><option value={3}>Term 3</option></select></div></div>
-        </div>
-        <div className="surface rounded-2xl p-6">
-          <div className="eyebrow">Assessment policy</div><div className="mt-4 grid grid-cols-2 gap-3"><div><label className="mb-2 block text-xs font-medium">SBA weight</label><input className="field" type="number" min="0" max="100" value={school.sbaWeight} onChange={e=>setSchool({...school,sbaWeight:Number(e.target.value)})}/></div><div><label className="mb-2 block text-xs font-medium">Exam weight</label><input className="field" type="number" min="0" max="100" value={school.examWeight} onChange={e=>setSchool({...school,examWeight:Number(e.target.value)})}/></div></div>
-          <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Combined weighting: <strong className="text-slate-700">{school.sbaWeight + school.examWeight}%</strong>. The system scales raw scores automatically.</div>
-        </div>
-        <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-700 py-3 text-sm font-semibold text-white shadow-lg shadow-primary-700/10 hover:bg-primary-800"><Save size={16}/> Save school settings</button>
-        {saved&&<div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 size={16}/> Settings saved successfully.</div>}
-      </div>
-    </form>
-  </div>;
+import { useState } from "react";
+import Link from "next/link";
+import { useWorkspace } from "@/components/workspace";
+import { PageHeader, Field, Restricted } from "@/components/ui";
+import { updateRow } from "@/lib/api";
+export default function Settings() {
+  const { data: w, run, busy } = useWorkspace(),
+    [school, setSchool] = useState(w.school);
+  if (w.profile.role !== "ADMIN") return <Restricted />;
+  const locked = w.scores.some(
+    (s) =>
+      s.academic_year === w.school.academic_year &&
+      s.term === w.school.current_term,
+  );
+  return (
+    <>
+      <PageHeader
+        eyebrow="Administration"
+        title="School settings"
+        description="School identity and assessment weights can only be changed by an administrator."
+      />
+      <form
+        method="post"
+        className="grid gap-5 lg:grid-cols-[1.5fr_1fr]"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await run(async () => {
+            if (Number(school.sba_weight) + Number(school.exam_weight) !== 100)
+              throw new Error("SBA and exam weights must add up to 100%.");
+            const {
+              name,
+              address,
+              phone,
+              email,
+              headteacher_name,
+              district,
+              region,
+              sba_weight,
+              exam_weight,
+            } = school;
+            await updateRow("schools", school.id, {
+              name,
+              address,
+              phone,
+              email,
+              headteacher_name,
+              district,
+              region,
+              sba_weight,
+              exam_weight,
+            });
+          }, "School settings saved.");
+        }}
+      >
+        <section className="surface grid gap-5 rounded-2xl p-6 sm:grid-cols-2">
+          {(
+            [
+              ["name", "School name"],
+              ["address", "Address"],
+              ["district", "District"],
+              ["region", "Region"],
+              ["phone", "Phone"],
+              ["email", "School email"],
+              ["headteacher_name", "Headmaster’s name"],
+            ] as const
+          ).map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                className="field"
+                required={key === "name"}
+                type={key === "email" ? "email" : "text"}
+                maxLength={150}
+                value={school[key] || ""}
+                onChange={(e) =>
+                  setSchool({ ...school, [key]: e.target.value })
+                }
+              />
+            </Field>
+          ))}
+        </section>
+        <section className="surface space-y-5 rounded-2xl p-6">
+          <h2 className="font-semibold">Assessment weights</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="SBA %">
+              <input
+                className="field"
+                type="number"
+                min={0}
+                max={100}
+                required
+                disabled={locked}
+                value={school.sba_weight}
+                onChange={(e) =>
+                  setSchool({
+                    ...school,
+                    sba_weight: Number(e.target.value),
+                    exam_weight: 100 - Number(e.target.value),
+                  })
+                }
+              />
+            </Field>
+            <Field label="Exam %">
+              <input
+                className="field"
+                type="number"
+                min={0}
+                max={100}
+                required
+                disabled={locked}
+                value={school.exam_weight}
+                onChange={(e) =>
+                  setSchool({
+                    ...school,
+                    exam_weight: Number(e.target.value),
+                    sba_weight: 100 - Number(e.target.value),
+                  })
+                }
+              />
+            </Field>
+          </div>
+          <p className="text-xs leading-6 text-muted">
+            {locked
+              ? "Weights are locked because marks have been entered this term."
+              : "Weights must add up to 100%. They become locked once marks are entered."}
+          </p>
+          <p className="border-t border-line pt-4 text-sm">
+            {w.school.academic_year} · Term {w.school.current_term}
+          </p>
+          <Link
+            href="/dashboard/terms"
+            className="block text-sm font-semibold text-[var(--g-green)]"
+          >
+            Manage academic terms →
+          </Link>
+          <button disabled={busy} className="btn-primary w-full">
+            Save school settings
+          </button>
+        </section>
+      </form>
+    </>
+  );
 }
