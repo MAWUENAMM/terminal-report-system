@@ -27,6 +27,13 @@ const config: Config = {
           gold: "#FCD116",
           green: "#006B3F",
         },
+        ink: "#0c0f0d",
+        paper: "#faf7f0",
+        "paper-elevated": "#fffcf7",
+        line: "#e6e0d6",
+        muted: "#5c635e",
+        gold: "#FCD116",
+        forest: "#006B3F",
       },
       fontFamily: {
         sans: ['"Instrument Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
