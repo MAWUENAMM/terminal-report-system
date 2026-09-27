@@ -372,7 +372,7 @@ export default function StudentsPage() {
                   <p className="mt-1 text-xs text-muted">Optional. JPEG or PNG.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">Admission no. *</label>
                   <input
@@ -438,15 +438,17 @@ export default function StudentsPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium">Gender *</label>
-                <select
-                  value={form.gender}
-                  onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value as "M" | "F" }))}
-                  className="field"
-                >
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
-                </select>
+                  <select
+                    value={form.gender}
+                    onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value as "M" | "F" }))}
+                    className="field"
+                  >
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                  </select>
+                </div>
               </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">Guardian name</label>
