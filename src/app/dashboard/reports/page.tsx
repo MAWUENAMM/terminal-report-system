@@ -7,6 +7,7 @@ import { computeOverallAverage, getGrade, computePositions } from "@/lib/grading
 import { formatName } from "@/lib/utils";
 import { generateReportPDF } from "@/lib/report-pdf";
 import { v4 as uuidv4 } from "uuid";
+import { CheckCircle2, Download, FileText, Search, Sparkles } from "lucide-react";
 
 export default function ReportsPage() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -121,10 +122,10 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-bold text-slate-900">Report Cards</h1>
         <p className="text-slate-600">Generate professional GES-style terminal report PDFs</p>
       </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex flex-wrap gap-4 items-end shadow-sm">
+      <div className="surface rounded-2xl p-4 md:p-5 flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Class</label>
-          <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+          <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="field min-w-[160px]">
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -136,33 +137,33 @@ export default function ReportsPage() {
             <option value={3}>Term 3</option>
           </select>
         </div>
-        <button onClick={ensureDemoRemarks} className="px-4 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">Add Sample Remarks & Attendance</button>
-        <button onClick={downloadAll} className="ml-auto px-5 py-2.5 bg-primary-700 text-white font-medium rounded-lg hover:bg-primary-800">Download All Reports</button>
+        <button onClick={ensureDemoRemarks} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"><CheckCircle2 size={15}/> Prepare demo data</button>
+        <button onClick={downloadAll} className="ml-auto inline-flex items-center gap-2 rounded-xl bg-primary-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-800"><Download size={15}/> Download all</button>
       </div>
-      {message && <div className="mb-4 px-4 py-2 bg-green-50 text-green-800 rounded-lg text-sm">{message}</div>}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {message && <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 size={16}/>{message}</div>}
+      <div className="surface overflow-hidden rounded-2xl">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b">
+          <thead className="bg-slate-50/80 border-b border-slate-100">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Student</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Admission No.</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Scores</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Action</th>
+              <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Learner</th>
+              <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Admission no.</th>
+              <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Completion</th>
+              <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Report</th>
             </tr>
           </thead>
           <tbody>
             {students.map(st => {
               const scoreCount = school ? store.getScoresByClassTerm(selectedClass, term, school.academicYear).filter(s => s.studentId === st.id).length : 0;
               return (
-                <tr key={st.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium flex items-center gap-3">
+                <tr key={st.id} className="border-t border-slate-100 hover:bg-slate-50/70">
+                  <td className="px-5 py-4 font-medium flex items-center gap-3">
                     {st.photoUrl ? <img src={st.photoUrl} className="w-8 h-8 rounded-full object-cover" alt="" /> : <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs text-slate-500">{st.firstName[0]}</div>}
                     {formatName(st.firstName, st.lastName)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{st.admissionNumber}</td>
-                  <td className="px-4 py-3">{scoreCount} subjects</td>
+                  <td className="px-5 py-4 font-mono text-xs text-slate-500">{st.admissionNumber}</td>
+                  <td className="px-5 py-4"><span className={"inline-flex rounded-full px-2.5 py-1 text-xs font-semibold "+(scoreCount>0?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700")}>{scoreCount} subjects entered</span></td>
                   <td className="px-4 py-3">
-                    <button onClick={() => downloadOne(st)} disabled={scoreCount === 0} className="text-primary-600 hover:underline disabled:text-slate-400">Download PDF</button>
+                    <button onClick={() => downloadOne(st)} disabled={scoreCount === 0} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><Download size={13}/> PDF</button>
                   </td>
                 </tr>
               );
