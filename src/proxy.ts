@@ -18,7 +18,11 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await client.auth.getUser();
-  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith("/dashboard") ||
+      request.nextUrl.pathname.startsWith("/account"))
+  ) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
     redirect.headers.set("Cache-Control", "private, no-store");
