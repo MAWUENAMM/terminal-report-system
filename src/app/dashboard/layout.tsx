@@ -137,14 +137,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="kente-bar" />
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[var(--g-green)]">
-                  <GraduationCap size={18} />
-                </div>
-                <span className="font-bold">EduReport</span>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMobile(false)}
+                  className="flex min-h-11 items-center gap-2.5 rounded-xl pr-2"
+                  aria-label="EduReport dashboard"
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[var(--g-green)]">
+                    <GraduationCap size={18} />
+                  </div>
+                  <span className="font-bold">EduReport</span>
+                </Link>
               </div>
               <button
                 onClick={() => setMobile(false)}
-                className="rounded-lg p-1.5 hover:bg-white/10"
+                aria-label="Close navigation"
+                className="min-h-11 min-w-11 rounded-lg p-2.5 hover:bg-white/10"
               >
                 <X size={18} />
               </button>
@@ -205,7 +213,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobile(true)}
-                className="rounded-lg p-2 text-muted hover:bg-line/50 lg:hidden"
+                aria-label="Open navigation"
+                className="min-h-11 min-w-11 rounded-lg p-2.5 text-muted hover:bg-line/50 lg:hidden"
               >
                 <Menu size={18} />
               </button>
@@ -309,7 +318,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <button
                 type="button"
                 aria-label="Notifications"
-                className="rounded-full p-2 text-muted transition hover:bg-line/40"
+                className="min-h-11 min-w-11 rounded-full p-2.5 text-muted transition hover:bg-line/40"
               >
                 <Bell size={17} />
               </button>
