@@ -124,6 +124,16 @@ export interface Term {
   term: number;
   status: "OPEN" | "CLOSED";
   closed_at: string | null;
+  archive_revision: number;
+}
+export interface TermEvent {
+  id: string;
+  term_id: string;
+  action: "CLOSED" | "REOPENED";
+  actor_name: string;
+  reason: string;
+  archive_revision: number;
+  created_at: string;
 }
 export interface ReportSnapshot {
   school: School;
@@ -145,6 +155,7 @@ export interface Archive {
   academic_year: string;
   term: number;
   created_at: string;
+  revision: number;
   snapshot: Pick<ReportSnapshot, "student">;
 }
 export interface Workspace {
@@ -161,6 +172,7 @@ export interface Workspace {
   remarks: Remark[];
   terms: Term[];
   archives: Archive[];
+  termEvents: TermEvent[];
   operator: boolean;
 }
 export const isLeader = (role: Role) =>

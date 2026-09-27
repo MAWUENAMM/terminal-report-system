@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Field, Modal, Empty } from "@/components/ui";
-import { saveRows } from "@/lib/api";
-import { fullName, type Student } from "@/lib/models";
+import { saveRows, deleteRow, updateRow } from "@/lib/api";
+import { fullName, isLeader, type Student } from "@/lib/models";
 import { readStudentImport, type ImportedStudent } from "@/lib/student-import";
 export default function Students() {
   const { data: w, run, busy } = useWorkspace(),
@@ -14,7 +14,7 @@ export default function Students() {
     [preview, setPreview] = useState<ImportedStudent[]>([]),
     [errors, setErrors] = useState<string[]>([]),
     [reading, setReading] = useState(false);
-  const admin = w.profile.role === "ADMIN",
+  const canManage = isLeader(w.profile.role),
     visible = w.students.filter(
       (s) =>
         (!classFilter || s.class_id === classFilter) &&
@@ -22,21 +22,31 @@ export default function Students() {
           .toLowerCase()
           .includes(query.toLowerCase()),
     );
+  const recordedLearners = new Set(
+    [
+      ...w.scores,
+      ...w.attendance,
+      ...w.affective,
+      ...w.remarks,
+      ...w.archives,
+    ].map((record) => record.student_id),
+  );
   return (
     <>
       <PageHeader
         eyebrow="Learner records"
         title="Learners"
         description={
-          admin
+          canManage
             ? "Register learners, maintain their class placement or import an existing school list."
-            : "View the learners in your assigned classes. Your administrator manages enrolment."
+            : "View the learners in your assigned classes. Your administrator or headmaster manages enrolment."
         }
       >
-        {admin && (
-          <div className="flex gap-2">
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
             <button
               className="btn-secondary"
+              disabled={busy}
               onClick={() => {
                 setImportOpen(true);
                 setPreview([]);
@@ -47,6 +57,7 @@ export default function Students() {
             </button>
             <button
               className="btn-primary"
+              disabled={busy}
               onClick={() =>
                 setDraft({
                   first_name: "",
@@ -77,7 +88,9 @@ export default function Students() {
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
         >
-          <option value="">All assigned classes</option>
+          <option value="">
+            {canManage ? "All classes" : "All assigned classes"}
+          </option>
           {w.classes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -95,36 +108,91 @@ export default function Students() {
                 <th>Class</th>
                 <th>Gender</th>
                 <th>Status</th>
-                {admin && <th />}
+                {canManage && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {visible.map((s) => (
-                <tr key={s.id}>
-                  <td className="font-medium">{fullName(s)}</td>
-                  <td>{s.admission_number}</td>
-                  <td>{w.classes.find((c) => c.id === s.class_id)?.name}</td>
-                  <td>{s.gender}</td>
-                  <td>{s.status.toLowerCase()}</td>
-                  {admin && (
-                    <td>
-                      <button
-                        className="font-semibold text-[var(--g-green)]"
-                        onClick={() => setDraft(s)}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
+              {visible.map((s) => {
+                const protectedRecords = recordedLearners.has(s.id);
+                return (
+                  <tr key={s.id}>
+                    <td className="font-medium">{fullName(s)}</td>
+                    <td>{s.admission_number}</td>
+                    <td>{w.classes.find((c) => c.id === s.class_id)?.name}</td>
+                    <td>{s.gender}</td>
+                    <td>{s.status.toLowerCase()}</td>
+                    {canManage && (
+                      <td>
+                        <div className="flex flex-wrap gap-4">
+                          <button
+                            className="font-semibold text-[var(--g-green)]"
+                            disabled={busy}
+                            onClick={() => setDraft(s)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="font-semibold text-[var(--g-green)]"
+                            disabled={busy}
+                            onClick={() => {
+                              const status =
+                                s.status === "ACTIVE" ? "WITHDRAWN" : "ACTIVE";
+                              if (
+                                confirm(
+                                  status === "WITHDRAWN"
+                                    ? `Withdraw ${fullName(s)} from the active learner list? Their results and reports will be kept.`
+                                    : `Restore ${fullName(s)} to the active learner list?`,
+                                )
+                              )
+                                void run(
+                                  () => updateRow("students", s.id, { status }),
+                                  status === "ACTIVE"
+                                    ? "Learner restored."
+                                    : "Learner withdrawn. Their records have been retained.",
+                                );
+                            }}
+                          >
+                            {s.status === "ACTIVE" ? "Withdraw" : "Restore"}
+                          </button>
+                          <button
+                            className="text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={busy || protectedRecords}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Permanently delete ${fullName(s)}? This cannot be undone. Learners with assessment or report history cannot be deleted.`,
+                                )
+                              )
+                                void run(
+                                  () => deleteRow("students", s.id),
+                                  "Unused learner record deleted.",
+                                );
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        {protectedRecords && (
+                          <p className="mt-2 text-xs text-muted">
+                            {s.status === "ACTIVE"
+                              ? "History retained. Use Withdraw to remove from the active list."
+                              : "Assessment and report history is retained."}
+                          </p>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : (
         <Empty>
           No learners match this view.{" "}
-          {admin ? "Add classes first, then register or import learners." : ""}
+          {canManage
+            ? "Add classes first, then register or import learners."
+            : ""}
         </Empty>
       )}
       {draft && (

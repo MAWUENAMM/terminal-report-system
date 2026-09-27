@@ -1,28 +1,44 @@
 "use client";
 import { useState } from "react";
 import { useWorkspace } from "@/components/workspace";
-import { PageHeader, Field, Restricted } from "@/components/ui";
+import { PageHeader, Field, Modal, Restricted } from "@/components/ui";
 import { browserClient } from "@/lib/supabase/client";
-import { isLeader } from "@/lib/models";
+import { isLeader, type Term } from "@/lib/models";
 export default function Terms() {
-  const { data: w, run, busy } = useWorkspace(),
-    [year, setYear] = useState(
-      w.school.current_term === 3
-        ? `${Number(w.school.academic_year.slice(0, 4)) + 1}/${Number(w.school.academic_year.slice(5)) + 1}`
-        : w.school.academic_year,
-    ),
-    [term, setTerm] = useState(
-      w.school.current_term === 3 ? 1 : w.school.current_term + 1,
-    ),
-    [confirmClose, setConfirmClose] = useState("");
+  const { data: w, run, busy } = useWorkspace();
+  const [year, setYear] = useState<string | null>(null);
+  const [term, setTerm] = useState<number | null>(null);
+  const [confirmClose, setConfirmClose] = useState("");
+  const [reopening, setReopening] = useState<Term | null>(null);
+  const [reason, setReason] = useState("");
+  const [confirmReopen, setConfirmReopen] = useState("");
   if (!isLeader(w.profile.role)) return <Restricted />;
   const open = w.terms.find((t) => t.status === "OPEN");
+  const ordered = [...w.terms].sort(
+    (a, b) => b.academic_year.localeCompare(a.academic_year) || b.term - a.term,
+  );
+  const latest = ordered[0];
+  const recoverable = !open && latest?.status === "CLOSED" ? latest : null;
+  const suggestedYear =
+    w.school.current_term === 3
+      ? `${Number(w.school.academic_year.slice(0, 4)) + 1}/${Number(w.school.academic_year.slice(5)) + 1}`
+      : w.school.academic_year;
+  const suggestedTerm =
+    w.school.current_term === 3 ? 1 : w.school.current_term + 1;
+  const events = [...w.termEvents].sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
+  function beginReopen(t: Term) {
+    setReason("");
+    setConfirmReopen("");
+    setReopening(t);
+  }
   return (
     <>
       <PageHeader
         eyebrow="Academic calendar"
         title="Terms & report archive"
-        description="Close a completed term to lock its records and preserve reports. New terms start with an empty assessment sheet while retaining the school’s learner roster."
+        description="Close a term to preserve its reports. If it was closed by mistake, reopen the most recent term before starting a later one."
       />
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="surface space-y-4 rounded-2xl p-6">
@@ -34,10 +50,11 @@ export default function Terms() {
           {open ? (
             <>
               <p className="text-sm leading-6 text-muted">
-                Closing saves report snapshots for all active learners,
-                including their current school details, results and remarks.
-                Marks and attendance for that term become read-only. Check the
-                reports first; this cannot be undone in the application.
+                Closing locks marks and attendance and saves report snapshots
+                for active learners.
+                {open.archive_revision > 0
+                  ? ` This closure will save report version ${open.archive_revision + 1}; all earlier versions remain available.`
+                  : " Check the reports before closing."}
               </p>
               <Field label="Type CLOSE to confirm">
                 <input
@@ -45,6 +62,7 @@ export default function Terms() {
                   value={confirmClose}
                   onChange={(e) => setConfirmClose(e.target.value)}
                   autoComplete="off"
+                  disabled={busy}
                 />
               </Field>
               <button
@@ -56,7 +74,7 @@ export default function Terms() {
                       const { error } =
                         await browserClient().rpc("close_current_term");
                       if (error) throw new Error(error.message);
-                    }, "Term closed. Its reports are now archived.")
+                    }, "Term closed. A new version of its reports has been archived.")
                   )
                     setConfirmClose("");
                 }}
@@ -65,10 +83,22 @@ export default function Terms() {
               </button>
             </>
           ) : (
-            <p className="text-sm leading-6 text-muted">
-              You can now start a new term. Existing archived reports will
-              remain unchanged.
-            </p>
+            <>
+              <p className="text-sm leading-6 text-muted">
+                Closed by mistake? Reopen the latest term to continue entering
+                marks, attendance and remarks. Existing archived report copies
+                will be preserved.
+              </p>
+              {recoverable && (
+                <button
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={() => beginReopen(recoverable)}
+                >
+                  Reopen Term {recoverable.term} · {recoverable.academic_year}
+                </button>
+              )}
+            </>
           )}
         </section>
         <form
@@ -76,13 +106,18 @@ export default function Terms() {
           className="surface space-y-4 rounded-2xl p-6"
           onSubmit={async (e) => {
             e.preventDefault();
-            await run(async () => {
-              const { error } = await browserClient().rpc("start_new_term", {
-                academic_year: year,
-                term,
-              });
-              if (error) throw new Error(error.message);
-            }, "New term opened. Existing learners and teaching assignments have been retained.");
+            if (
+              await run(async () => {
+                const { error } = await browserClient().rpc("start_new_term", {
+                  academic_year: year ?? suggestedYear,
+                  term: term ?? suggestedTerm,
+                });
+                if (error) throw new Error(error.message);
+              }, "New term opened. Learners and teaching assignments have been retained.")
+            ) {
+              setYear(null);
+              setTerm(null);
+            }
           }}
         >
           <h2 className="text-lg font-semibold">Start a new term</h2>
@@ -92,16 +127,16 @@ export default function Terms() {
               pattern="[0-9]{4}/[0-9]{4}"
               placeholder="2026/2027"
               required
-              disabled={!!open}
-              value={year}
+              disabled={!!open || busy}
+              value={year ?? suggestedYear}
               onChange={(e) => setYear(e.target.value)}
             />
           </Field>
           <Field label="Term">
             <select
               className="field"
-              disabled={!!open}
-              value={term}
+              disabled={!!open || busy}
+              value={term ?? suggestedTerm}
               onChange={(e) => setTerm(Number(e.target.value))}
             >
               {[1, 2, 3].map((t) => (
@@ -112,9 +147,9 @@ export default function Terms() {
             </select>
           </Field>
           <p className="text-xs leading-6 text-muted">
-            Starting a new academic year keeps the current class groups.
-            Administrators can update learner placement before entering new
-            marks.
+            Starting a later term keeps your learners and classes, and prevents
+            reopening earlier terms. If the previous term was closed
+            accidentally, reopen it first.
           </p>
           <button className="btn-primary" disabled={busy || !!open}>
             Start term
@@ -128,31 +163,148 @@ export default function Terms() {
               <th>Academic year</th>
               <th>Term</th>
               <th>Status</th>
-              <th>Closed on</th>
+              <th>Report versions</th>
+              <th>Last closed</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {[...w.terms]
-              .sort(
-                (a, b) =>
-                  b.academic_year.localeCompare(a.academic_year) ||
-                  b.term - a.term,
-              )
-              .map((t) => (
-                <tr key={t.id}>
-                  <td>{t.academic_year}</td>
-                  <td>{t.term}</td>
-                  <td>{t.status}</td>
-                  <td>
-                    {t.closed_at
-                      ? new Date(t.closed_at).toLocaleDateString("en-GB")
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
+            {ordered.map((t) => (
+              <tr key={t.id}>
+                <td>{t.academic_year}</td>
+                <td>{t.term}</td>
+                <td>{t.status}</td>
+                <td>{t.archive_revision || "—"}</td>
+                <td>
+                  {t.closed_at
+                    ? new Date(t.closed_at).toLocaleString("en-GB")
+                    : "—"}
+                </td>
+                <td>
+                  {t.status === "CLOSED" ? (
+                    <div className="space-y-1">
+                      <button
+                        className="font-semibold text-[var(--g-green)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={busy || recoverable?.id !== t.id}
+                        onClick={() => beginReopen(t)}
+                      >
+                        Reopen term
+                      </button>
+                      {recoverable?.id !== t.id && (
+                        <p className="text-xs text-muted">
+                          A later term has already started.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted">Open for entries</span>
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      {events.length > 0 && (
+        <section className="surface rounded-2xl p-6">
+          <h2 className="text-lg font-semibold">Recent term activity</h2>
+          <ul className="mt-4 divide-y divide-line">
+            {events.slice(0, 10).map((event) => {
+              const t = w.terms.find((t) => t.id === event.term_id);
+              return (
+                <li key={event.id} className="py-3 text-sm">
+                  <p className="font-medium">
+                    {event.actor_name}{" "}
+                    {event.action === "REOPENED" ? "reopened" : "closed"} Term{" "}
+                    {t?.term} · {t?.academic_year}
+                  </p>
+                  {event.reason && (
+                    <p className="mt-1 text-muted">{event.reason}</p>
+                  )}
+                  <p className="mt-1 text-xs text-muted">
+                    {new Date(event.created_at).toLocaleString("en-GB")}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+      {reopening && (
+        <Modal
+          title={`Reopen Term ${reopening.term} · ${reopening.academic_year}`}
+          onClose={() => {
+            if (!busy) setReopening(null);
+          }}
+        >
+          <form
+            method="post"
+            className="space-y-5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (confirmReopen !== "REOPEN") return;
+              if (
+                await run(async () => {
+                  const { error } = await browserClient().rpc("reopen_term", {
+                    term_id: reopening.id,
+                    reason: reason.trim(),
+                  });
+                  if (error) throw new Error(error.message);
+                }, "Term reopened. Entries can be edited again; earlier report versions are preserved.")
+              ) {
+                setReopening(null);
+                setConfirmClose("");
+              }
+            }}
+          >
+            <p className="text-sm leading-6 text-muted">
+              Teachers will be able to update this term’s marks, attendance and
+              remarks again. Closing it again will create a new report version.
+              Earlier archived copies remain available.
+            </p>
+            <Field label="Reason for reopening">
+              <textarea
+                className="field"
+                required
+                minLength={5}
+                maxLength={500}
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                disabled={busy}
+                placeholder="For example: Term was closed accidentally."
+              />
+            </Field>
+            <Field label="Type REOPEN to confirm">
+              <input
+                className="field"
+                value={confirmReopen}
+                onChange={(e) => setConfirmReopen(e.target.value)}
+                autoComplete="off"
+                disabled={busy}
+              />
+            </Field>
+            <div className="flex gap-3">
+              <button
+                className="btn-primary"
+                disabled={
+                  busy || confirmReopen !== "REOPEN" || reason.trim().length < 5
+                }
+              >
+                Reopen term
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => setReopening(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }

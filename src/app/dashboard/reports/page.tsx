@@ -32,11 +32,16 @@ export default function Reports() {
     students = w.students.filter(
       (s) => s.class_id === selected && s.status === "ACTIVE",
     ),
-    archives = w.archives.filter(
-      (a) =>
-        (!selected || a.class_id === selected) &&
-        (!archiveTerm || `${a.academic_year}:${a.term}` === archiveTerm),
-    );
+    archives = w.archives
+      .filter(
+        (a) =>
+          (!selected || a.class_id === selected) &&
+          (!archiveTerm || `${a.academic_year}:${a.term}` === archiveTerm),
+      )
+      .sort(
+        (a, b) =>
+          b.created_at.localeCompare(a.created_at) || b.revision - a.revision,
+      );
   function edit(s: Student) {
     const x = currentSnapshot(w, s);
     setStudent(s);
@@ -97,7 +102,12 @@ export default function Reports() {
             >
               <option value="">All archived terms</option>
               {w.terms
-                .filter((t) => t.status === "CLOSED")
+                .filter((t) =>
+                  w.archives.some(
+                    (a) =>
+                      a.academic_year === t.academic_year && a.term === t.term,
+                  ),
+                )
                 .map((t) => (
                   <option key={t.id} value={`${t.academic_year}:${t.term}`}>
                     {t.academic_year} · Term {t.term}
@@ -116,6 +126,7 @@ export default function Reports() {
                   <th>Learner</th>
                   <th>Academic year</th>
                   <th>Term</th>
+                  <th>Version</th>
                   <th>Archived</th>
                   <th />
                 </tr>
@@ -128,6 +139,26 @@ export default function Reports() {
                     </td>
                     <td>{a.academic_year}</td>
                     <td>{a.term}</td>
+                    <td>
+                      <span>Version {a.revision}</span>
+                      <p className="mt-1 text-xs text-muted">
+                        {w.terms.some(
+                          (t) =>
+                            t.academic_year === a.academic_year &&
+                            t.term === a.term &&
+                            t.status === "OPEN",
+                        )
+                          ? "Term reopened · earlier copy"
+                          : w.terms.some(
+                                (t) =>
+                                  t.academic_year === a.academic_year &&
+                                  t.term === a.term &&
+                                  t.archive_revision === a.revision,
+                              )
+                            ? "Latest closure"
+                            : "Earlier copy"}
+                      </p>
+                    </td>
                     <td>
                       {new Date(a.created_at).toLocaleDateString("en-GB")}
                     </td>
@@ -142,7 +173,7 @@ export default function Reports() {
                               .eq("id", a.id)
                               .single();
                             if (error) throw new Error(error.message);
-                            await downloadReport(data.snapshot);
+                            await downloadReport(data.snapshot, a.revision);
                           }, "Archived PDF downloaded.")
                         }
                       >
