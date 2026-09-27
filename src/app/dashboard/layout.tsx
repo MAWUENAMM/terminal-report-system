@@ -2,10 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, Menu, Search } from "lucide-react";
+import {
+  Bell,
+  GraduationCap,
+  Menu,
+  Search,
+  X,
+} from "lucide-react";
+import Link from "next/link";
 import { store } from "@/lib/store";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { User } from "@/types";
+import { cn } from "@/lib/utils";
 
 const titles: Record<string, string> = {
   "/dashboard": "Overview",
@@ -15,6 +23,15 @@ const titles: Record<string, string> = {
   "/dashboard/reports": "Report cards",
   "/dashboard/settings": "Settings",
 };
+
+const mobileNav = [
+  { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard/students", label: "Students" },
+  { href: "/dashboard/classes", label: "Classes" },
+  { href: "/dashboard/scores", label: "Assessment" },
+  { href: "/dashboard/reports", label: "Report cards" },
+  { href: "/dashboard/settings", label: "Settings" },
+];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -38,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="grid min-h-screen place-items-center bg-paper">
         <div className="flex items-center gap-3 text-sm text-muted">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-gold" />
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--g-green)]" />
           Preparing workspace…
         </div>
       </div>
@@ -57,27 +74,59 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {mobile && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button className="absolute inset-0 bg-ink/50" onClick={() => setMobile(false)} />
-          <div className="relative h-full w-[260px] bg-ink p-4 text-white">
-            <div className="mb-6 font-semibold">EduReport</div>
-            <p className="text-xs text-white/50">Use a wider screen for the full sidebar.</p>
-            <button
-              onClick={() => setMobile(false)}
-              className="mt-6 text-sm text-gold underline"
-            >
-              Close
-            </button>
+          <button
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setMobile(false)}
+          />
+          <div className="relative flex h-full w-[280px] flex-col bg-[var(--g-green)] text-white">
+            <div className="kente-bar" />
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[var(--g-green)]">
+                  <GraduationCap size={18} />
+                </div>
+                <span className="font-bold">EduReport</span>
+              </div>
+              <button
+                onClick={() => setMobile(false)}
+                className="rounded-lg p-1.5 hover:bg-white/10"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="flex-1 space-y-1 p-3">
+              {mobileNav.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobile(false)}
+                    className={cn(
+                      "block rounded-xl px-3 py-2.5 text-sm font-medium",
+                      active
+                        ? "bg-[var(--g-gold)] text-ink"
+                        : "text-white/70 hover:bg-white/10"
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
           </div>
         </div>
       )}
 
       <main className="min-w-0 flex-1 overflow-auto">
-        <div className="sticky top-0 z-30 border-b border-line bg-paper-elevated/90 backdrop-blur-md">
+        <div className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur-md">
           <div className="mx-auto flex h-[60px] max-w-[1400px] items-center justify-between px-4 md:px-7">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobile(true)}
-                className="rounded-md p-2 text-muted hover:bg-line/50 lg:hidden"
+                className="rounded-lg p-2 text-muted hover:bg-line/50 lg:hidden"
               >
                 <Menu size={18} />
               </button>
@@ -90,20 +139,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-2 rounded-lg border border-line bg-paper px-3 py-1.5 text-xs text-muted md:flex">
+              <div className="hidden items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs text-muted md:flex">
                 <Search size={13} />
                 Search
               </div>
-              <button className="rounded-lg p-2 text-muted hover:bg-line/40">
+              <button className="rounded-full p-2 text-muted hover:bg-line/40">
                 <Bell size={17} />
               </button>
               <div className="ml-1 flex items-center gap-2 border-l border-line pl-3">
-                <div className="grid h-8 w-8 place-items-center rounded-full bg-ink text-[10px] font-bold text-white">
+                <div className="grid h-8 w-8 place-items-center rounded-full bg-[var(--g-green)] text-[10px] font-bold text-white">
                   {initials}
                 </div>
                 <div className="hidden sm:block">
                   <div className="text-xs font-semibold text-ink">{user?.name}</div>
-                  <div className="text-[10px] text-muted">
+                  <div className="text-[10px] capitalize text-muted">
                     {user?.role?.split("_").join(" ")}
                   </div>
                 </div>

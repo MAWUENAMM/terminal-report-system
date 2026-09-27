@@ -47,8 +47,15 @@ export default function DashboardPage() {
     [classes, active, scores]
   );
 
+  const stats = [
+    { label: "Active students", value: active.length, icon: Users, sub: "Learner records", color: "bg-[var(--g-green)]" },
+    { label: "Classes", value: classes.length, icon: ClipboardList, sub: "Configured", color: "bg-[var(--g-gold)]" },
+    { label: "Scores entered", value: scores.length, icon: FileOutput, sub: "Assessment rows", color: "bg-[var(--g-red)]" },
+    { label: "Class average", value: `${average}%`, icon: TrendingUp, sub: "Across entered scores", color: "bg-ink" },
+  ];
+
   return (
-    <div className="space-y-7">
+    <div className="space-y-7 animate-fade-up">
       <header className="flex flex-col gap-4 border-b border-line pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="eyebrow">School overview</div>
@@ -66,41 +73,41 @@ export default function DashboardPage() {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Active students", value: active.length, icon: Users, sub: "Learner records" },
-          { label: "Classes", value: classes.length, icon: ClipboardList, sub: "Configured" },
-          { label: "Scores entered", value: scores.length, icon: FileOutput, sub: "Assessment rows" },
-          { label: "Class average", value: `${average}%`, icon: TrendingUp, sub: "Across entered scores" },
-        ].map((s) => (
-          <div key={s.label} className="surface rounded-xl p-5">
+        {stats.map((s) => (
+          <div
+            key={s.label}
+            className="surface rounded-2xl p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5"
+          >
             <div className="flex items-start justify-between">
-              <div className="flex h-9 w-9 items-center justify-center border border-line bg-paper text-ink">
-                <s.icon size={16} strokeWidth={1.75} />
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${s.color} text-white`}>
+                <s.icon size={18} strokeWidth={1.75} />
               </div>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-forest">
+              <span className="rounded-full bg-[var(--g-green)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--g-green)]">
                 Live
               </span>
             </div>
             <div className="font-display mt-5 text-3xl font-medium tracking-tight text-ink">
               {s.value}
             </div>
-            <div className="mt-1 text-sm font-medium text-ink">{s.label}</div>
+            <div className="mt-1 text-sm font-semibold text-ink">{s.label}</div>
             <div className="mt-0.5 text-xs text-muted">{s.sub}</div>
           </div>
         ))}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.4fr_0.85fr]">
-        <div className="surface rounded-xl p-6">
+        <div className="surface rounded-2xl p-6">
           <div className="eyebrow">Progress</div>
           <h2 className="mt-1 text-lg font-semibold tracking-tight">Assessment completion</h2>
           <div className="mt-8 flex items-end justify-between">
-            <div className="font-display text-4xl font-medium tracking-tight">{completion}%</div>
+            <div className="font-display text-4xl font-medium tracking-tight text-[var(--g-green)]">
+              {completion}%
+            </div>
             <div className="text-xs text-muted">{scores.length} records captured</div>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-line">
+          <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-line">
             <div
-              className="h-full rounded-full bg-ink transition-all"
+              className="h-full rounded-full bg-[var(--g-green)] transition-all duration-700"
               style={{ width: `${completion}%` }}
             />
           </div>
@@ -110,33 +117,40 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-ink p-6 text-white">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
-            Next step
+        <div className="relative overflow-hidden rounded-2xl bg-[var(--g-green)] p-6 text-white">
+          <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-[var(--g-gold)]/20" />
+          <div className="absolute -bottom-8 -left-4 h-20 w-20 rounded-full bg-white/5" />
+          <div className="relative">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--g-gold)]">
+              Next step
+            </div>
+            <div className="font-display mt-3 text-xl font-medium leading-snug">
+              Ready to issue terminal reports?
+            </div>
+            <p className="mt-2 text-sm leading-6 text-white/65">
+              Review scores and remarks, then generate branded PDFs for the class.
+            </p>
+            <Link
+              href="/dashboard/reports"
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[var(--g-gold)] px-5 py-2.5 text-sm font-semibold text-ink shadow-lg shadow-black/15 transition hover:brightness-105"
+            >
+              Go to reports
+              <ArrowRight size={14} />
+            </Link>
           </div>
-          <div className="font-display mt-3 text-xl font-medium leading-snug">
-            Ready to issue terminal reports?
-          </div>
-          <p className="mt-2 text-sm leading-6 text-white/50">
-            Review scores and remarks, then generate branded PDFs for the class.
-          </p>
-          <Link
-            href="/dashboard/reports"
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-gold px-4 py-2.5 text-sm font-semibold text-ink"
-          >
-            Go to reports
-            <ArrowRight size={14} />
-          </Link>
         </div>
       </section>
 
-      <section className="surface overflow-hidden rounded-xl">
+      <section className="surface overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <div>
             <div className="eyebrow">Structure</div>
             <h2 className="mt-0.5 text-lg font-semibold tracking-tight">Classes</h2>
           </div>
-          <Link href="/dashboard/classes" className="text-xs font-semibold text-ink underline-offset-2 hover:underline">
+          <Link
+            href="/dashboard/classes"
+            className="text-xs font-semibold text-[var(--g-green)] underline-offset-2 hover:underline"
+          >
             Manage
           </Link>
         </div>
@@ -144,19 +158,19 @@ export default function DashboardPage() {
           {classRows.map((c) => (
             <div
               key={c.id}
-              className="flex items-center gap-4 px-6 py-3.5 hover:bg-paper/80"
+              className="flex items-center gap-4 px-6 py-3.5 transition hover:bg-paper/80"
             >
-              <div className="flex h-9 w-9 items-center justify-center border border-line bg-paper text-xs font-semibold text-ink">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--g-green)]/10 text-xs font-bold text-[var(--g-green)]">
                 {c.name.slice(0, 2)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-ink">{c.name}</div>
+                <div className="text-sm font-semibold text-ink">{c.name}</div>
                 <div className="text-xs text-muted">
                   {c.level} · {c.count} students
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-semibold text-ink">
+                <div className="text-sm font-bold text-ink">
                   {c.avg}
                   {c.avg !== "—" ? "%" : ""}
                 </div>
