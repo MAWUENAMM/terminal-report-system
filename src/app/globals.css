@@ -3,17 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --ink: #0b1220;
-  --ink-soft: #1a2332;
-  --paper: #f7f4ef;
-  --paper-elevated: #fffcf7;
-  --line: #e6e0d6;
-  --muted: #6b6560;
-  --gold: #b8922e;
-  --gold-soft: #f3e6c0;
-  --forest: #0f3d2e;
-  --forest-soft: #e8f0ec;
-  --danger: #9b2c2c;
+  --g-green: #006b3f;
+  --g-green-dark: #004d2c;
+  --g-gold: #fcd116;
+  --g-red: #ce1126;
+  --ink: #0c0f0d;
+  --cream: #faf7f0;
+  --sand: #f0ebe0;
+  --muted: #5c635e;
 }
 
 * { box-sizing: border-box; }
@@ -22,72 +19,91 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   color: var(--ink);
-  background: var(--paper);
-  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--cream);
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: var(--gold-soft);
+  background: var(--g-gold);
   color: var(--ink);
 }
 
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-fade-in {
+  animation: fadeIn 0.6s ease both;
+}
+.animate-slide-right {
+  animation: slideRight 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.delay-1 { animation-delay: 0.1s; }
+.delay-2 { animation-delay: 0.2s; }
+.delay-3 { animation-delay: 0.3s; }
+.delay-4 { animation-delay: 0.4s; }
+.delay-5 { animation-delay: 0.5s; }
+
 @layer components {
   .font-display {
-    font-family: "Newsreader", Georgia, "Times New Roman", serif;
+    font-family: "Newsreader", Georgia, serif;
   }
-
-  .surface {
-    @apply border bg-[var(--paper-elevated)];
-    border-color: var(--line);
-    box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 40px rgba(11, 18, 32, 0.04);
+  .btn-green {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition-all duration-300;
+    background: var(--g-green);
   }
-
-  .eyebrow {
-    @apply text-[11px] font-semibold uppercase tracking-[0.18em];
-    color: var(--muted);
+  .btn-green:hover {
+    background: var(--g-green-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 107, 63, 0.35);
   }
-
-  .page-title {
-    @apply text-[28px] md:text-[34px] font-semibold tracking-[-0.03em];
-    color: var(--ink);
-  }
-
-  .field {
-    @apply w-full rounded-lg border px-3.5 py-2.5 text-sm outline-none transition;
-    border-color: var(--line);
-    background: #fff;
-  }
-  .field:focus {
-    border-color: var(--ink);
-    box-shadow: 0 0 0 3px rgba(11, 18, 32, 0.08);
-  }
-
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white transition;
-    background: var(--ink);
-  }
-  .btn-primary:hover {
-    background: var(--ink-soft);
-  }
-
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold transition;
-    border-color: var(--line);
-    background: #fff;
-    color: var(--ink);
-  }
-  .btn-secondary:hover {
-    background: var(--paper);
-  }
-
   .btn-gold {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition;
-    background: var(--gold);
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-all duration-300;
+    background: var(--g-gold);
     color: var(--ink);
   }
   .btn-gold:hover {
-    filter: brightness(0.95);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(252, 209, 22, 0.4);
+  }
+  .btn-outline-light {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border-2 border-white/40 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-all duration-300;
+  }
+  .btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.7);
+  }
+  .kente-bar {
+    background: linear-gradient(
+      90deg,
+      var(--g-red) 0%,
+      var(--g-red) 33%,
+      var(--g-gold) 33%,
+      var(--g-gold) 66%,
+      var(--g-green) 66%,
+      var(--g-green) 100%
+    );
+    height: 4px;
   }
 }
