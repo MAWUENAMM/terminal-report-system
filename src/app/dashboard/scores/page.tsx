@@ -1,196 +1,48 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ClipboardCheck, Save, Search, SlidersHorizontal, Sparkles } from "lucide-react";
 import { store } from "@/lib/store";
 import { Class, Student, Subject, Score, School } from "@/types";
-import { computeTotal, getGrade, computePositions } from "@/lib/grading";
+import { computeTotal, computePositions } from "@/lib/grading";
 import { formatName } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
 
 export default function ScoresPage() {
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [school, setSchool] = useState<School | null>(null);
-  const [selectedClass, setSelectedClass] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [term, setTerm] = useState<1|2|3>(1);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [rows, setRows] = useState<{ studentId: string; sbaRaw: string; examRaw: string; existingId?: string }[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [classes,setClasses]=useState<Class[]>([]); const [subjects,setSubjects]=useState<Subject[]>([]); const [school,setSchool]=useState<School|null>(null);
+  const [selectedClass,setSelectedClass]=useState(""); const [selectedSubject,setSelectedSubject]=useState(""); const [term,setTerm]=useState<1|2|3>(1);
+  const [students,setStudents]=useState<Student[]>([]); const [rows,setRows]=useState<{studentId:string;sbaRaw:string;examRaw:string;existingId?:string}[]>([]); const [saved,setSaved]=useState(false); const [query,setQuery]=useState("");
 
-  useEffect(() => {
-    const cls = store.getClasses();
-    const subs = store.getSubjects();
-    const sch = store.getSchool();
-    setClasses(cls);
-    setSubjects(subs);
-    setSchool(sch);
-    if (cls.length) setSelectedClass(cls[0].id);
-    if (subs.length) setSelectedSubject(subs[0].id);
-    if (sch) setTerm(sch.currentTerm);
-  }, []);
+  useEffect(()=>{store.seed();const cls=store.getClasses(),subs=store.getSubjects(),sch=store.getSchool();setClasses(cls);setSubjects(subs);setSchool(sch);if(cls.length)setSelectedClass(cls[0].id);if(subs.length)setSelectedSubject(subs[0].id);if(sch)setTerm(sch.currentTerm)},[]);
+  useEffect(()=>{if(!selectedClass||!selectedSubject||!school)return;const studs=store.getStudentsByClass(selectedClass);setStudents(studs);const existing=store.getScoresByClassTerm(selectedClass,term,school.academicYear).filter(s=>s.subjectId===selectedSubject);setRows(studs.map(st=>{const ex=existing.find(e=>e.studentId===st.id);return{studentId:st.id,sbaRaw:ex?.sbaRaw?.toString()??"",examRaw:ex?.examRaw?.toString()??"",existingId:ex?.id}}));setSaved(false)},[selectedClass,selectedSubject,term,school]);
+  function updateRow(id:string,field:"sbaRaw"|"examRaw",value:string){setRows(r=>r.map(x=>x.studentId===id?{...x,[field]:value}:x))}
+  function saveAll(){if(!school||!selectedClass||!selectedSubject)return;const old=store.getScores().filter(s=>!(s.classId===selectedClass&&s.subjectId===selectedSubject&&s.term===term&&s.academicYear===school.academicYear));const next:Score[]=rows.map(r=>{const a=computeTotal(parseFloat(r.sbaRaw)||0,100,parseFloat(r.examRaw)||0,100,school.sbaWeight,school.examWeight);return{id:r.existingId||uuidv4(),studentId:r.studentId,subjectId:selectedSubject,classId:selectedClass,term,academicYear:school.academicYear,sbaRaw:parseFloat(r.sbaRaw)||0,sbaScaled:a.sbaScaled,examRaw:parseFloat(r.examRaw)||0,examScaled:a.examScaled,total:a.total,grade:a.grade}});const pm=computePositions(next.map(s=>({studentId:s.studentId,total:s.total})));next.forEach(s=>s.position=pm.get(s.studentId));store.saveScores([...old,...next]);setSaved(true);setTimeout(()=>setSaved(false),2200)}
+  const filtered=useMemo(()=>students.filter(s=>formatName(s.firstName,s.lastName).toLowerCase().includes(query.toLowerCase())||s.admissionNumber.toLowerCase().includes(query.toLowerCase())),[students,query]);
+  const entered=rows.filter(r=>r.sbaRaw!==""||r.examRaw!=="").length;
+  return <div className="space-y-6">
+    <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><div className="eyebrow">Assessment workspace</div><h1 className="page-title mt-2">Assessment & Scores</h1><p className="mt-2 text-sm text-slate-500">Enter raw marks once. The system scales, grades and ranks them automatically.</p></div><div className="flex items-center gap-2 rounded-xl border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700"><Sparkles size={15}/> {school?.sbaWeight ?? 50}:{school?.examWeight ?? 50} automated weighting</div></header>
 
-  useEffect(() => {
-    if (!selectedClass || !selectedSubject || !school) return;
-    const studs = store.getStudentsByClass(selectedClass);
-    setStudents(studs);
-    const existing = store.getScoresByClassTerm(selectedClass, term, school.academicYear)
-      .filter(s => s.subjectId === selectedSubject);
-    setRows(studs.map(st => {
-      const ex = existing.find(e => e.studentId === st.id);
-      return {
-        studentId: st.id,
-        sbaRaw: ex?.sbaRaw?.toString() ?? "",
-        examRaw: ex?.examRaw?.toString() ?? "",
-        existingId: ex?.id,
-      };
-    }));
-    setSaved(false);
-  }, [selectedClass, selectedSubject, term, school]);
-
-  function updateRow(studentId: string, field: "sbaRaw" | "examRaw", value: string) {
-    setRows(r => r.map(row => row.studentId === studentId ? { ...row, [field]: value } : row));
-  }
-
-  function saveAll() {
-    if (!school || !selectedClass || !selectedSubject) return;
-    const sbaW = school.sbaWeight;
-    const examW = school.examWeight;
-    let allScores = store.getScores().filter(
-      s => !(s.classId === selectedClass && s.subjectId === selectedSubject && s.term === term && s.academicYear === school.academicYear)
-    );
-
-    const newScores: Score[] = rows.map(row => {
-      const sbaRaw = parseFloat(row.sbaRaw) || 0;
-      const examRaw = parseFloat(row.examRaw) || 0;
-      const computed = computeTotal(sbaRaw, 100, examRaw, 100, sbaW, examW);
-      return {
-        id: row.existingId || uuidv4(),
-        studentId: row.studentId,
-        subjectId: selectedSubject,
-        classId: selectedClass,
-        term,
-        academicYear: school.academicYear,
-        sbaRaw,
-        sbaScaled: computed.sbaScaled,
-        examRaw,
-        examScaled: computed.examScaled,
-        total: computed.total,
-        grade: computed.grade,
-      };
-    });
-
-    const posMap = computePositions(newScores.map(s => ({ studentId: s.studentId, total: s.total })));
-    newScores.forEach(s => { s.position = posMap.get(s.studentId); });
-
-    store.saveScores([...allScores, ...newScores]);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }
-
-  function getPreview(row: typeof rows[0]) {
-    if (!school) return null;
-    const sbaRaw = parseFloat(row.sbaRaw);
-    const examRaw = parseFloat(row.examRaw);
-    if (isNaN(sbaRaw) && isNaN(examRaw)) return null;
-    return computeTotal(sbaRaw || 0, 100, examRaw || 0, 100, school.sbaWeight, school.examWeight);
-  }
-
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Scores & SBA</h1>
-        <p className="text-slate-600">Enter class assessment and examination scores. Totals and grades are calculated automatically (SBA {school?.sbaWeight ?? 50}% + Exam {school?.examWeight ?? 50}%).</p>
+    <section className="surface rounded-2xl p-4 md:p-5">
+      <div className="grid gap-3 md:grid-cols-4">
+        <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Class</label><select className="field" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Subject</label><select className="field" value={selectedSubject} onChange={e=>setSelectedSubject(e.target.value)}>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+        <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Term</label><select className="field" value={term} onChange={e=>setTerm(Number(e.target.value) as 1|2|3)}><option value={1}>Term 1</option><option value={2}>Term 2</option><option value={3}>Term 3</option></select></div>
+        <div className="relative"><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Find learner</label><Search size={16} className="absolute left-3 top-[37px] text-slate-400"/><input className="field pl-9" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Name or admission no."/></div>
       </div>
+    </section>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex flex-wrap gap-4 items-end shadow-sm">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Class</label>
-          <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Subject</label>
-          <select value={selectedSubject} onChange={e => setSelectedSubject(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
-            {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Term</label>
-          <select value={term} onChange={e => setTerm(Number(e.target.value) as 1|2|3)}
-            className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
-            <option value={1}>Term 1</option>
-            <option value={2}>Term 2</option>
-            <option value={3}>Term 3</option>
-          </select>
-        </div>
-        <button onClick={saveAll}
-          className="ml-auto px-5 py-2.5 bg-primary-700 text-white font-medium rounded-lg hover:bg-primary-800 transition">
-          Save All Scores
-        </button>
-        {saved && <span className="text-sm text-green-600 font-medium">✓ Saved</span>}
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Student</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">SBA Raw (/100)</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Exam Raw (/100)</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">SBA Scaled</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Exam Scaled</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Total</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Grade</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const st = students.find(s => s.id === row.studentId);
-              const preview = getPreview(row);
-              return (
-                <tr key={row.studentId} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-2.5 font-medium">
-                    {st ? formatName(st.firstName, st.lastName) : row.studentId}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="number" min={0} max={100} step={0.5}
-                      value={row.sbaRaw}
-                      onChange={e => updateRow(row.studentId, "sbaRaw", e.target.value)}
-                      className="w-24 px-2 py-1.5 border rounded focus:ring-2 focus:ring-primary-500 outline-none"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="number" min={0} max={100} step={0.5}
-                      value={row.examRaw}
-                      onChange={e => updateRow(row.studentId, "examRaw", e.target.value)}
-                      className="w-24 px-2 py-1.5 border rounded focus:ring-2 focus:ring-primary-500 outline-none"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-600">{preview ? preview.sbaScaled.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{preview ? preview.examScaled.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-2.5 font-semibold">{preview ? preview.total.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-2.5">
-                    {preview && (
-                      <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-slate-100">
-                        {preview.grade}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {rows.length === 0 && (
-          <div className="p-8 text-center text-slate-500">No students in this class. Add students first.</div>
-        )}
-      </div>
+    <div className="grid gap-4 sm:grid-cols-3">
+      <div className="surface rounded-2xl p-4"><div className="text-xs text-slate-400">Class roster</div><div className="mt-1 text-2xl font-semibold">{students.length}</div><div className="text-xs text-slate-500">learners</div></div>
+      <div className="surface rounded-2xl p-4"><div className="text-xs text-slate-400">Entry completion</div><div className="mt-1 text-2xl font-semibold">{students.length?Math.round(entered/students.length*100):0}%</div><div className="text-xs text-slate-500">{entered} of {students.length} started</div></div>
+      <div className="surface rounded-2xl p-4"><div className="text-xs text-slate-400">Policy</div><div className="mt-1 text-2xl font-semibold">{school?.sbaWeight}/{school?.examWeight}</div><div className="text-xs text-slate-500">SBA / examination</div></div>
     </div>
-  );
+
+    <section className="surface overflow-hidden rounded-2xl">
+      <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 md:flex-row md:items-center md:justify-between"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-700"><ClipboardCheck size={17}/></div><div><div className="text-sm font-semibold">Mark entry</div><div className="text-xs text-slate-400">Raw scores are out of 100</div></div></div><button onClick={saveAll} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800"><Save size={15}/> Save assessment</button></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead className="bg-slate-50/80"><tr><th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Learner</th><th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">SBA raw</th><th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Exam raw</th><th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">SBA / {school?.sbaWeight}</th><th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Exam / {school?.examWeight}</th><th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Total</th><th className="px-5 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Grade</th></tr></thead>
+      <tbody>{filtered.map(row=>{const st=students.find(s=>s.id===row.id);return null}).length===0?null:filtered.map(st=>{const row=rows.find(r=>r.studentId===st.id)!;const p=school?computeTotal(parseFloat(row.sbaRaw)||0,100,parseFloat(row.examRaw)||0,100,school.sbaWeight,school.examWeight):null;return <tr key={st.id} className="border-t border-slate-100 hover:bg-slate-50/70"><td className="px-5 py-3"><div className="font-medium text-slate-800">{formatName(st.firstName,st.lastName)}</div><div className="text-[11px] text-slate-400">{st.admissionNumber}</div></td><td className="px-3 py-3"><input type="number" min="0" max="100" step=".5" value={row.sbaRaw} onChange={e=>updateRow(st.id,"sbaRaw",e.target.value)} className="w-24 rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10"/></td><td className="px-3 py-3"><input type="number" min="0" max="100" step=".5" value={row.examRaw} onChange={e=>updateRow(st.id,"examRaw",e.target.value)} className="w-24 rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10"/></td><td className="px-3 py-3 text-center text-slate-500">{p?.sbaScaled.toFixed(1)||"—"}</td><td className="px-3 py-3 text-center text-slate-500">{p?.examScaled.toFixed(1)||"—"}</td><td className="px-3 py-3 text-center font-semibold">{p?.total.toFixed(1)||"—"}</td><td className="px-5 py-3 text-center">{p?<span className="inline-flex min-w-8 justify-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{p.grade}</span>:<span className="text-slate-300">—</span>}</td></tr>})}</tbody></table></div>
+      {students.length===0&&<div className="px-6 py-16 text-center"><SlidersHorizontal className="mx-auto text-slate-300"/><div className="mt-3 text-sm font-medium">No learners in this class</div><div className="mt-1 text-xs text-slate-400">Add learners before entering assessment scores.</div></div>}
+      {saved&&<div className="m-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 size={16}/> Assessment records saved successfully.</div>}
+    </section>
+  </div>;
 }
