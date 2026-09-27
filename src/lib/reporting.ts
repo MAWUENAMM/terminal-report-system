@@ -164,10 +164,13 @@ export function reportData(snapshot: ReportSnapshot): {
     },
   };
 }
-export async function downloadReport(snapshot: ReportSnapshot) {
+export async function downloadReport(
+  snapshot: ReportSnapshot,
+  revision?: number,
+) {
   const { generateReportPDF } = await import("./report-pdf");
   const { data, subjects } = reportData(snapshot);
   generateReportPDF(data, subjects).save(
-    `${snapshot.student.admission_number.replace(/[^a-z0-9_-]/gi, "_")}_${snapshot.school.academic_year.replace("/", "-")}_Term${snapshot.school.current_term}.pdf`,
+    `${snapshot.student.admission_number.replace(/[^a-z0-9_-]/gi, "_")}_${snapshot.school.academic_year.replace("/", "-")}_Term${snapshot.school.current_term}${revision ? `_Archive_v${revision}` : ""}.pdf`,
   );
 }

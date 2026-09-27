@@ -31,7 +31,7 @@ async function all(
       .from(table)
       .select(
         table === "report_archives"
-          ? "id,school_id,student_id,class_id,academic_year,term,created_at,snapshot:snapshot->student"
+          ? "id,school_id,student_id,class_id,academic_year,term,created_at,revision,snapshot:snapshot->student"
           : "*",
       )
       .order("id")
@@ -95,6 +95,7 @@ export function WorkspaceProvider({
       all("remarks", school.data),
       all("academic_terms"),
       all("report_archives"),
+      all("term_events"),
       client
         .from("platform_operators")
         .select("auth_user_id")
@@ -113,6 +114,7 @@ export function WorkspaceProvider({
       remarks,
       terms,
       archives,
+      termEvents,
       operator,
     ] = results;
 
@@ -130,6 +132,7 @@ export function WorkspaceProvider({
       remarks,
       terms,
       archives,
+      termEvents,
       operator: !!operator.data,
     } as Workspace);
   }, [profile.auth_user_id]);

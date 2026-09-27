@@ -14,3 +14,11 @@ Passed:
 Local browser verification was attempted with agent-browser and Playwright. This execution environment denied Unix socket creation; automatic approval also rejected escalation. Therefore an authenticated visual browser walkthrough is still required. The Playwright smoke checks are committed for an environment with browser access. Do not treat build success or SQL checks as proof of visual usability.
 
 The demonstration school uses fictional learners. Initial account passwords are handed over separately; they are not test fixtures or source-controlled data.
+
+## Term recovery and headmaster enrolment follow-up
+
+- Expanded the transactional suite to cover headmaster class/learner create, edit, withdraw, restore and safe deletion; rejected other-school mutations and teacher writes.
+- Tested reopening permissions, mandatory reason, class-placement guard, immutable report versions, corrected second closure, blocked older-term reopening, and protected deletion of assessment/archive history. The full suite passed with all fixtures and trial schema changes rolled back.
+- Reopening is deliberately limited to the most recent term before a later one is started. No existing closed term is automatically reopened by this migration.
+
+- Follow-up production build and TypeScript passed; ESLint reported no errors and the same five pre-existing navigation/font warnings. Supabase security advisors reported no new database warnings. Authenticated visual browser verification remains unavailable in this execution environment.
