@@ -5,6 +5,7 @@ import { store } from "@/lib/store";
 import { Student, Class } from "@/types";
 import { formatName } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
+import { Plus, Search, Pencil, UsersRound } from "lucide-react";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -81,30 +82,30 @@ export default function StudentsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-7">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Students</h1>
-          <p className="text-slate-600">Manage student records and photos</p>
+          <div className="eyebrow">Student information</div><h1 className="page-title mt-2">Students</h1>
+          <p className="mt-2 text-sm text-slate-500">Maintain learner profiles, class placement and guardian information.</p>
         </div>
-        <button onClick={openNew} className="px-4 py-2.5 bg-primary-700 text-white font-medium rounded-lg hover:bg-primary-800">+ Add Student</button>
+        <button onClick={openNew} className="inline-flex items-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800"><Plus size={16}/> Add student</button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="surface rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+          <thead className="bg-slate-50/80 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Photo</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Admission No.</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Name</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Gender</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Class</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Actions</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Profile</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admission no.</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Student</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Gender</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Class</th>
+              <th className="text-left px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Actions</th>
             </tr>
           </thead>
           <tbody>
             {students.filter(s => s.status === "ACTIVE").map((s) => (
               <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3">
+                <td className="px-5 py-3">
                   {s.photoUrl ? (
                     <img src={s.photoUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
                   ) : (
@@ -113,8 +114,8 @@ export default function StudentsPage() {
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{s.admissionNumber}</td>
-                <td className="px-4 py-3 font-medium">{formatName(s.firstName, s.lastName, s.otherNames)}</td>
+                <td className="px-5 py-3 font-mono text-xs text-slate-500">{s.admissionNumber}</td>
+                <td className="px-5 py-3 font-medium">{formatName(s.firstName, s.lastName, s.otherNames)}</td>
                 <td className="px-4 py-3">{s.gender === "M" ? "Male" : "Female"}</td>
                 <td className="px-4 py-3">{className(s.classId)}</td>
                 <td className="px-4 py-3">
