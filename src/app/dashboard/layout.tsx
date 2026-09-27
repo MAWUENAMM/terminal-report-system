@@ -154,6 +154,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 );
               })}
             </nav>
+
+            <div className="border-t border-white/10 p-3">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--g-gold)] text-[11px] font-bold text-ink">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-semibold">{user?.name || "User"}</div>
+                    <div className="truncate text-[10px] capitalize text-white/50">
+                      {user?.role?.split("_").join(" ") || "Staff"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[12px] text-white/60 transition hover:bg-white/10 hover:text-white"
+                >
+                  <LogOut size={14} />
+                  Sign out
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
