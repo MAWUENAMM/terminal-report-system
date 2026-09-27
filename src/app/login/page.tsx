@@ -1,52 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ArrowRight,
-  GraduationCap,
-  Shield,
-} from "lucide-react";
-import { store } from "@/lib/store";
+import Image from "next/image";
+import { ArrowLeft, ArrowRight, GraduationCap, Shield } from "lucide-react";
 
-const HERO_IMG =
-  "https://raw.githubusercontent.com/MAWUENAMM/terminal-report-system/main/hero-students.jpg";
-
-const ACCOUNTS = [
-  { role: "Administrator", email: "admin@school.edu.gh", note: "Full system access" },
-  { role: "Headteacher", email: "head@school.edu.gh", note: "School oversight" },
-  { role: "Class Teacher", email: "teacher@school.edu.gh", note: "Assessment & reports" },
-];
+const HERO_IMG = "/hero-students.jpg";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("teacher@school.edu.gh");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    store.seed();
-  }, []);
-
-  function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    const user = store.getUsers().find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (!user) {
-      setError("No account found for this email. Select a role below or check the address.");
-      return;
-    }
-    store.setCurrentUser(user);
-    router.push("/dashboard");
-  }
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+function LoginForm() {
+  const params = useSearchParams();
+  const error = !params.has("error")
+    ? ""
+    : params.get("error") === "inactive"
+      ? "This account is inactive. Contact your school administrator."
+      : params.get("error") === "expired"
+        ? "This password link is invalid or has expired. Contact your administrator."
+        : "Sign in failed. Check your email and password, or contact your school administrator.";
+  const updated = params.has("updated");
+  const [pending, setPending] = useState(false);
 
   return (
     <main className="min-h-[100svh] bg-paper">
       <div className="kente-bar" />
       <div className="grid min-h-[calc(100vh-4px)] lg:grid-cols-2">
         <section className="relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-16">
-          <img
+          <Image
             src={HERO_IMG}
+            fill
+            priority
+            sizes="50vw"
             alt="Ghanaian students"
             className="absolute inset-0 h-full w-full object-cover object-[center_20%]"
           />
@@ -74,8 +65,8 @@ export default function LoginPage() {
               One place for marks, learners, and terminal reports.
             </h1>
             <p className="mt-5 text-[15px] leading-7 text-white/70">
-              Sign in to enter scores, manage student records, and issue consistent
-              report cards aligned with Ghana Education Service practice.
+              Sign in to enter scores, manage student records, and issue
+              consistent report cards for your school.
             </p>
           </div>
 
@@ -116,74 +107,88 @@ export default function LoginPage() {
               Sign in to your workspace
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Enter your school email to continue.
+              Use the email and password issued for your school account.
             </p>
 
-            <form onSubmit={handleLogin} className="surface mt-7 rounded-2xl p-4 sm:mt-8 sm:p-6">
-              <label className="mb-1.5 block text-sm font-medium">Email</label>
+            <form
+              method="post"
+              action="/auth/login"
+              onSubmit={() => setPending(true)}
+              className="surface mt-7 rounded-2xl p-4 sm:mt-8 sm:p-6"
+            >
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium"
+              >
+                Email
+              </label>
               <input
                 className="field"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="email"
+                name="email"
+                autoComplete="username"
+                maxLength={254}
                 placeholder="you@school.edu.gh"
                 required
               />
 
-              <label className="mb-1.5 mt-4 block text-sm font-medium">Password</label>
-              <input className="field" type="password" defaultValue="" placeholder="Enter password" />
+              <label
+                htmlFor="password"
+                className="mb-1.5 mt-4 block text-sm font-medium"
+              >
+                Password
+              </label>
+              <input
+                className="field"
+                id="password"
+                name="password"
+                autoComplete="current-password"
+                type="password"
+                required
+                maxLength={128}
+                placeholder="Enter password"
+              />
 
+              {updated && (
+                <p className="mt-4 text-sm text-green-800">
+                  Password updated. Sign in with your new password.
+                </p>
+              )}
               {error && (
                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
                   {error}
                 </div>
               )}
 
-              <button type="submit" className="btn-primary mt-6 w-full">
-                Sign in
+              <button
+                type="submit"
+                disabled={pending}
+                className="btn-primary mt-6 w-full"
+              >
+                {pending ? "Signing in…" : "Sign in"}
                 <ArrowRight size={16} />
               </button>
             </form>
 
-            <div className="mt-4 rounded-2xl border border-line bg-white p-3.5 sm:mt-5 sm:p-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--g-green)]">
-                Quick access
-              </div>
-              <div className="mt-3 space-y-1.5">
-                {ACCOUNTS.map((d) => (
-                  <button
-                    key={d.email}
-                    type="button"
-                    onClick={() => {
-                      setEmail(d.email);
-                      setError("");
-                    }}
-                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition ${
-                      email === d.email
-                        ? "border-[var(--g-green)] bg-[var(--g-green)] text-white"
-                        : "border-line bg-white hover:bg-paper"
-                    }`}
-                  >
-                    <span>
-                      <span className="block text-sm font-medium">{d.role}</span>
-                      <span
-                        className={`block text-[11px] ${
-                          email === d.email ? "text-white/60" : "text-muted"
-                        }`}
-                      >
-                        {d.note}
-                      </span>
-                    </span>
-                    <span
-                      className={`font-mono text-[11px] ${
-                        email === d.email ? "text-white/50" : "text-muted"
-                      }`}
-                    >
-                      {d.email.split("@")[0]}
-                    </span>
-                  </button>
-                ))}
-              </div>
+            <div className="mt-6 space-y-3 text-sm text-muted">
+              <p>
+                New school?{" "}
+                <Link
+                  href="/request-access"
+                  className="font-semibold text-[var(--g-green)]"
+                >
+                  Request school access
+                </Link>
+              </p>
+              <p>
+                Forgot your password? Ask your school administrator to reset it,
+                or{" "}
+                <Link href="/contact" className="underline">
+                  contact support
+                </Link>
+                .
+              </p>
             </div>
           </div>
         </section>

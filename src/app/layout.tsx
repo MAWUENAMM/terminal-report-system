@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "EduReport · Terminal Reports for Ghana Basic Schools",
   description:
-    "GES-aligned terminal report system for Ghanaian basic schools — SBA, exams, attendance and professional PDF reports.",
+    "School terminal report system for Ghanaian basic schools — SBA, exams, attendance and professional PDF reports.",
 };
 
 export default function RootLayout({

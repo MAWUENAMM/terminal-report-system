@@ -29,7 +29,15 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
-  doc.text(school.name.toUpperCase(), pageWidth / 2, 10, { align: "center" });
+  while (
+    doc.getTextWidth(school.name.toUpperCase()) > pageWidth - margin * 2 &&
+    doc.getFontSize() > 8
+  )
+    doc.setFontSize(doc.getFontSize() - 1);
+  doc.text(school.name.toUpperCase(), pageWidth / 2, 10, {
+    align: "center",
+    maxWidth: pageWidth - margin * 2,
+  });
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   if (school.address) {
@@ -59,9 +67,10 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const midX = pageWidth / 2;
 
   doc.text(
-    "Name: " + formatName(student.firstName, student.lastName, student.otherNames),
+    "Name: " +
+      formatName(student.firstName, student.lastName, student.otherNames),
     leftX,
-    y
+    y,
   );
   doc.text("Class: " + cls.name, midX, y);
   y += 5;
@@ -80,7 +89,14 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   // Photo if available
   if (student.photoUrl && student.photoUrl.startsWith("data:image")) {
     try {
-      doc.addImage(student.photoUrl, "JPEG", pageWidth - margin - 22, 34, 20, 22);
+      doc.addImage(
+        student.photoUrl,
+        "JPEG",
+        pageWidth - margin - 22,
+        34,
+        20,
+        22,
+      );
     } catch {
       /* ignore invalid images */
     }
@@ -88,11 +104,11 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   // Scores table
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
-  const tableBody = scores
+  const tableBody = [...scores]
     .sort(
       (a, b) =>
         (subjectMap.get(a.subjectId)?.order ?? 99) -
-        (subjectMap.get(b.subjectId)?.order ?? 99)
+        (subjectMap.get(b.subjectId)?.order ?? 99),
     )
     .map((sc) => [
       subjectMap.get(sc.subjectId)?.name || sc.subjectId,
@@ -106,7 +122,17 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   autoTable(doc, {
     startY: y,
-    head: [["Subject", "SBA (50)", "Exam (50)", "Total", "Grade", "Pos.", "Remarks"]],
+    head: [
+      [
+        "Subject",
+        `SBA (${school.sbaWeight})`,
+        `Exam (${school.examWeight})`,
+        "Total",
+        "Grade",
+        "Pos.",
+        "Remarks",
+      ],
+    ],
     body: tableBody,
     theme: "grid",
     headStyles: {
@@ -117,7 +143,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     },
     bodyStyles: { fontSize: 8 },
     columnStyles: {
-      0: { cellWidth: 42 },
+      0: { cellWidth: 54 },
       1: { cellWidth: 20, halign: "center" },
       2: { cellWidth: 20, halign: "center" },
       3: { cellWidth: 18, halign: "center" },
@@ -130,80 +156,62 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   y = (doc as any).lastAutoTable.finalY + 8;
 
-  // Summary
+  function room(height: number) {
+    if (y + height > 278) {
+      doc.addPage();
+      y = 20;
+    }
+  }
+  function paragraph(text: string, bold = false) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    const lines: string[] = doc.splitTextToSize(text, pageWidth - margin * 2);
+    for (const line of lines) {
+      room(6);
+      doc.text(line, leftX, y);
+      y += 4.5;
+    }
+    y += 2;
+  }
   doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
   doc.setTextColor(16, 24, 40);
-  doc.text("Overall Average: " + overallAverage.toFixed(1) + "%", leftX, y);
-  doc.text("Overall Grade: " + overallGrade, midX, y);
-  y += 6;
-
-  if (attendance) {
-    doc.setFont("helvetica", "normal");
-    doc.text(
+  paragraph(
+    "Overall Average: " +
+      overallAverage.toFixed(1) +
+      "%    |    Overall Grade: " +
+      overallGrade,
+    true,
+  );
+  if (attendance)
+    paragraph(
       "Attendance: " +
         attendance.daysPresent +
         " out of " +
         attendance.totalDays +
         " days",
-      leftX,
-      y
     );
-    y += 6;
-  }
-
-  // Affective
   if (affective) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Conduct & Attitude", leftX, y);
-    y += 5;
-    doc.setFont("helvetica", "normal");
-    if (affective.conduct) {
-      doc.text("Conduct: " + affective.conduct, leftX, y);
-      y += 4.5;
-    }
-    if (affective.interest) {
-      doc.text("Interest: " + affective.interest, leftX, y);
-      y += 4.5;
-    }
-    if (affective.attitude) {
-      doc.text("Attitude: " + affective.attitude, leftX, y);
-      y += 4.5;
-    }
-    if (affective.talents) {
-      doc.text("Talents: " + affective.talents, leftX, y);
-      y += 4.5;
-    }
-    y += 3;
+    room(12);
+    paragraph("Conduct & Attitude", true);
+    for (const [label, text] of [
+      ["Conduct", affective.conduct],
+      ["Interest", affective.interest],
+      ["Attitude", affective.attitude],
+      ["Talents", affective.talents],
+    ])
+      if (text) paragraph(label + ": " + text);
   }
-
-  // Remarks
   if (remarks?.classTeacherRemark) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Class Teacher's Remarks:", leftX, y);
-    y += 4.5;
-    doc.setFont("helvetica", "normal");
-    const lines = doc.splitTextToSize(
-      remarks.classTeacherRemark,
-      pageWidth - margin * 2
-    );
-    doc.text(lines, leftX, y);
-    y += lines.length * 4.5 + 4;
+    room(12);
+    paragraph("Class Teacher's Remarks:", true);
+    paragraph(remarks.classTeacherRemark);
   }
-
   if (remarks?.headteacherRemark) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Headteacher's Remarks:", leftX, y);
-    y += 4.5;
-    doc.setFont("helvetica", "normal");
-    const lines = doc.splitTextToSize(
-      remarks.headteacherRemark,
-      pageWidth - margin * 2
-    );
-    doc.text(lines, leftX, y);
-    y += lines.length * 4.5 + 6;
+    room(12);
+    paragraph("Headteacher's Remarks:", true);
+    paragraph(remarks.headteacherRemark);
   }
-
+  y += 6;
+  room(20);
   // Signature lines
   y = Math.max(y, 250);
   doc.setFontSize(8);
@@ -216,18 +224,23 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   doc.text("Signature & Date", leftX, y);
   doc.text("Signature & Date", midX, y);
 
-  // Footer
-  doc.setFontSize(7);
-  doc.setTextColor(120);
-  doc.text(
-    "Generated on " +
-      new Date().toLocaleDateString("en-GB") +
-      " | Computer-generated report | " +
-      school.name,
-    pageWidth / 2,
-    290,
-    { align: "center" }
-  );
-
+  // Repeat a compact footer on every page, including long reports.
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text(
+      "Generated on " +
+        new Date().toLocaleDateString("en-GB") +
+        " | Computer-generated report | Page " +
+        page +
+        " of " +
+        pages,
+      pageWidth / 2,
+      290,
+      { align: "center" },
+    );
+  }
   return doc;
 }

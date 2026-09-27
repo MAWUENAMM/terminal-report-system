@@ -1,55 +1,64 @@
-# Automated Terminal Report System for Ghanaian Basic Schools
+# EduReport — school workspaces
 
-A modern, GES/NaCCA-aligned web application for generating terminal report cards.
+A working pilot for Ghanaian basic schools, built with Next.js 16, React 19, Supabase Auth/Postgres and PDF reports. The green and gold presentation design is retained. School records are shared through Supabase; the former browser-only store and public demo credentials have been removed.
 
-## Features
+## Accounts and responsibilities
 
-- Student management with photo upload
-- Class & subject configuration
-- SBA + Examination score entry with automatic 50:50 scaling, grading and ranking
-- Attendance, Conduct, Interest, Attitude & Talents
-- Class Teacher & Headteacher remarks
-- Professional PDF terminal report generation
-- Role-based demo login (Admin, Headteacher, Class Teacher)
-- School settings (name, year, term, weights)
+| Account         | Access                                                                                                     | Who grants it                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Administrator   | School settings, staff accounts, learner register/imports, classes, subjects, assignments, marks and terms | Platform owner creates the first school administrator; an administrator can add colleagues |
+| Headmaster      | School-wide results/reports, headmaster remarks, closing and starting terms                                | School administrator                                                                       |
+| Class teacher   | Marks, attendance, class remarks and reports for assigned classes                                          | School administrator assigns the class                                                     |
+| Subject teacher | Marks for assigned class/subject combinations                                                              | School administrator assigns the subject and class                                         |
 
-## Demo Accounts
+One staff account can also hold teaching assignments beyond its primary role. The platform owner has a separate, database-controlled permission for reviewing new school requests; being a school administrator alone does not grant it. Staff cannot grant themselves roles through their profile or Auth metadata.
 
-| Role          | Email                     | Password |
-|---------------|---------------------------|----------|
-| Admin         | admin@school.edu.gh       | any      |
-| Headteacher   | head@school.edu.gh        | any      |
-| Class Teacher | teacher@school.edu.gh     | any      |
+The provisioned school is explicitly named **Unity Basic School — Demonstration**, with fictional `DEMO` learners. Initial passwords are supplied privately, never in this repository or on the login page. All initial/reset passwords require replacement before school data is available. Staff management generates a password for private handover; it does **not** send invitations or password emails. Use actual staff email addresses when onboarding a real school.
 
-## Local Development
+## Main workflows
 
-```bash
-npm install
+1. A representative submits **Request school access**. The platform owner reviews the representative, approves the request and privately gives the first administrator their account details.
+2. The administrator creates staff, classes and subjects, then assigns class and subject teachers. Subjects can be restricted to KG, Primary, JHS or all levels.
+3. Register learners or import CSV/Excel `.xlsx`. Download the template from Students. Create the referenced classes first. Admission numbers must be unique within a school; format numeric identifiers as text in Excel to preserve leading zeros. Preview errors must be resolved before saving. Each import is one atomic database operation, limited to 1,000 learners and 2 MB.
+4. Teachers save raw SBA and examination marks out of 100. The database calculates weighted totals and grades; clients cannot forge them. The default scale is A ≥ 80, B ≥ 70, C ≥ 60, D ≥ 50, E ≥ 40, F below 40. This is a pilot school scale, not a claim of official approval. Weights become locked after marks are entered for the term.
+5. Class teachers enter attendance and their remarks. Headmasters add their own remarks without overwriting the teacher's. Download PDFs from Reports & attendance.
+6. Leadership checks completeness, then types `CLOSE` to close a term. Records become read-only and report snapshots preserve school details, learner placement and results. Start a later term to get empty mark sheets while keeping learners and assignments. Closing cannot be undone through the app. Archived snapshots are loaded individually when downloaded.
+
+Public totals come from a dedicated aggregate table. Public visitors cannot read learners, staff or requests. The landing page and open workspaces refresh on focus and every 30 seconds; a save refreshes the current workspace immediately. Totals include the explicitly labelled demonstration school.
+
+## Local development
+
+Use Node 22 or newer:
+
+```sh
+npm ci
 npm run dev
+npm test
+npm run lint
+npm run build
 ```
 
-Open http://localhost:3000
+The checked-in `src/lib/supabase/project.json` contains only this pilot's **publishable** key and project URL. Public keys are intended for browser use; database policies enforce access. For a separate deployment, set both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` as shown in `.env.example`. Never place a service-role/secret key in a `NEXT_PUBLIC_` variable.
 
-## Free Hosting on Vercel (Recommended)
+## Database and privileged account operations
 
-1. Go to [vercel.com](https://vercel.com) and sign in with GitHub.
-2. Click **Add New Project** → import `MAWUENAMM/terminal-report-system`.
-3. Leave build settings as default (Next.js is auto-detected).
-4. Click **Deploy**.
+`supabase/migrations/` contains the original schema and all applied migrations in their server order. Apply them with the Supabase CLI to a separate project, or inspect them in the SQL editor. Do not reapply migrations already recorded in the existing pilot project.
 
-Your prototype will be live within ~1–2 minutes.
+`supabase/functions/school-admin/index.ts` handles account creation, password setup/reset and approved school provisioning. It uses Supabase's built-in server-only service credentials. Deploy it as `school-admin` with gateway JWT verification disabled: the function explicitly validates bearer tokens with Auth `getUser`, checks the live staff profile, and restricts each action. The initial bootstrap action instead requires a hashed, expiring, one-use setup token and refuses to run once a platform operator exists.
 
-## Data Storage Note
+For a fresh project's first owner, create a cryptographically random setup token **outside source control**, store its SHA-256 hash, the intended owner email and a short expiry in `private.setup_tokens`, then call `school-admin` with `action: bootstrap`, the owner's name, school name and `x-setup-token`. Save the returned initial password privately and delete the raw setup token. The existing project is already bootstrapped.
 
-This prototype currently uses **browser localStorage** so it works immediately without a database.  
-Data is stored per browser. For multi-user / production use, migrate the `src/lib/store.ts` layer to Supabase, Neon, or any PostgreSQL backend.
+Authenticated data operations use the user's Supabase session and Row Level Security. Policies enforce school, class and subject boundaries independently of navigation. Database triggers validate score ranges, attendance, subject levels, same-school relationships, term locks and separate remark ownership. Deactivating a staff profile removes its data permissions. School records cannot be accessed until initial password setup is complete. Report archives are immutable to application users.
 
-## Tech Stack
+## Verification and deployment
 
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- jsPDF + autotable (report generation)
-- localStorage (prototype persistence)
+- `tests/core.test.ts`: grade boundaries, ranking ties, import identifiers, duplicates and invalid files.
+- `tests/permissions.sql`: transaction-scoped role, school isolation, forbidden mutations, attendance validation, password setup/deactivation and term/archive tests. Run with a database administrator; it rolls back every fixture. Do not remove the final rollback.
+- `tests/public.spec.ts`: desktop/mobile public navigation and protected route smoke checks using Playwright. `npm run test:browser` requires a running production build's browser dependencies; the config starts the app automatically.
+- `docs/verification.md`: checks performed for this implementation and remaining visual verification limits.
 
-Built for Ghanaian basic schools · September 2026
+The GitHub-connected Vercel project builds with `npm run build`. Feature branches produce a review deployment; merging the reviewed branch to `main` updates production. Supabase migrations and the account function are deployed separately. No paid plan or email provider was enabled by this change.
+
+## Pilot boundaries
+
+Review grading rules, report wording and Privacy/Terms with each participating school before issuing official reports. The school should approve access and the use of learner data. PDF averages use entered subjects, so verify completeness before closing a term. This pilot does not yet provide automatic learner promotion, institution-specific grading scales, an audit-event UI, or a self-service email recovery flow. Keep appropriate independent exports/backups and choose an email provider before enabling invitation/recovery email. Free hosting/database quotas and availability still apply.

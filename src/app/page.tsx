@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { Footer } from "@/components/public-layout";
+import { browserClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -15,8 +18,7 @@ import {
   Users,
 } from "lucide-react";
 
-const HERO_IMG =
-  "https://raw.githubusercontent.com/MAWUENAMM/terminal-report-system/main/hero-students.jpg";
+const HERO_IMG = "/hero-students.jpg";
 
 function useCountUp(target: number, duration = 1600) {
   const [value, setValue] = useState(0);
@@ -38,9 +40,33 @@ function useCountUp(target: number, duration = 1600) {
 }
 
 export default function HomePage() {
-  const students = useCountUp(66);
-  const classes = useCountUp(11);
-  const reports = useCountUp(100);
+  const [stats, setStats] = useState<{
+    learners: number;
+    classes: number;
+    schools: number;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const { data, error } = await browserClient()
+        .from("public_statistics")
+        .select("learners,classes,schools")
+        .eq("id", true)
+        .single();
+      if (active && !error) setStats(data);
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+  const students = useCountUp(stats?.learners || 0);
+  const classes = useCountUp(stats?.classes || 0);
+  const schools = useCountUp(stats?.schools || 0);
 
   return (
     <main className="min-h-screen bg-[var(--cream)] text-[var(--ink)] overflow-x-hidden">
@@ -53,18 +79,29 @@ export default function HomePage() {
               <GraduationCap size={22} strokeWidth={2} />
             </div>
             <div className="text-white">
-              <div className="text-[15px] font-bold tracking-tight leading-none">EduReport</div>
+              <div className="text-[15px] font-bold tracking-tight leading-none">
+                EduReport
+              </div>
               <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-white/70 mt-0.5">
                 Ghana Basic Schools
               </div>
             </div>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-white/80">
-            <a href="#features" className="hover:text-white transition">Features</a>
-            <a href="#how" className="hover:text-white transition">How it works</a>
-            <a href="#why" className="hover:text-white transition">Why EduReport</a>
+            <a href="#features" className="hover:text-white transition">
+              Features
+            </a>
+            <a href="#how" className="hover:text-white transition">
+              How it works
+            </a>
+            <a href="#why" className="hover:text-white transition">
+              Why EduReport
+            </a>
           </nav>
-          <Link href="/login" className="btn-gold !py-2.5 !px-5 text-[13px] animate-fade-in delay-1">
+          <Link
+            href="/login"
+            className="btn-gold !py-2.5 !px-5 text-[13px] animate-fade-in delay-1"
+          >
             Sign in
             <ArrowRight size={15} />
           </Link>
@@ -73,8 +110,11 @@ export default function HomePage() {
 
       <section className="relative min-h-[100svh] flex items-end pb-16 pt-28 lg:items-center lg:pb-0">
         <div className="absolute inset-0">
-          <img
+          <Image
             src={HERO_IMG}
+            fill
+            priority
+            sizes="100vw"
             alt="Ghanaian basic school students in uniform"
             className="h-full w-full object-cover object-[center_20%]"
           />
@@ -91,7 +131,9 @@ export default function HomePage() {
 
             <h1 className="animate-fade-up delay-1 font-display mt-6 text-[2.6rem] font-medium leading-[1.1] tracking-[-0.02em] text-white sm:text-5xl lg:text-[3.4rem]">
               Terminal reports
-              <span className="block text-[var(--g-gold)]">worthy of every learner.</span>
+              <span className="block text-[var(--g-gold)]">
+                worthy of every learner.
+              </span>
             </h1>
 
             <p className="animate-fade-up delay-2 mt-5 max-w-md text-base leading-7 text-white/75 sm:text-lg">
@@ -104,20 +146,20 @@ export default function HomePage() {
                 Open workspace
                 <ArrowRight size={16} />
               </Link>
-              <a href="#how" className="btn-outline-light">
-                See how it works
-              </a>
+              <Link href="/request-access" className="btn-outline-light">
+                Request school access
+              </Link>
             </div>
 
             <div className="animate-fade-up delay-4 mt-12 grid grid-cols-3 gap-4 border-t border-white/15 pt-8 max-w-md">
               {[
                 [students, "", "Learners"],
                 [classes, "", "Classes"],
-                [reports, "%", "Coverage"],
+                [schools, "", "Schools"],
               ].map(([val, suffix, label]) => (
                 <div key={String(label)}>
                   <div className="text-2xl font-bold text-white tabular-nums">
-                    {val}
+                    {stats ? val : "—"}
                     <span className="text-[var(--g-gold)]">{suffix}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-white/50">
@@ -126,6 +168,9 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+            <p className="mt-4 text-xs text-white/60">
+              Live pilot totals · shared counts, no learner details
+            </p>
           </div>
         </div>
 
@@ -152,7 +197,7 @@ export default function HomePage() {
               {
                 icon: ClipboardList,
                 title: "SBA & exam entry",
-                body: "Capture continuous assessment and end-of-term scores. Automatic 50:50 scaling, grades and class positions.",
+                body: "Capture continuous assessment and end-of-term scores. School-defined weighting, grades and class positions.",
                 accent: "bg-[var(--g-green)]",
               },
               {
@@ -169,14 +214,14 @@ export default function HomePage() {
               },
               {
                 icon: Award,
-                title: "GES-aligned grading",
+                title: "School assessment rules",
                 body: "Letter grades A–F with descriptors. Configurable SBA and exam weights per school.",
                 accent: "bg-[var(--g-green)]",
               },
               {
                 icon: Shield,
                 title: "Role-based access",
-                body: "Admin, headteacher, class teacher and subject teacher — each sees only what they need.",
+                body: "Individual staff accounts with access controlled by school, role and teaching assignments.",
                 accent: "bg-[var(--ink)]",
               },
               {
@@ -190,18 +235,27 @@ export default function HomePage() {
                 key={title}
                 className="group relative overflow-hidden rounded-2xl border border-black/5 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
               >
-                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${accent} text-white`}>
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl ${accent} text-white`}
+                >
                   <Icon size={20} strokeWidth={1.75} />
                 </div>
-                <h3 className="mt-5 text-[16px] font-semibold tracking-tight">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{body}</p>
+                <h3 className="mt-5 text-[16px] font-semibold tracking-tight">
+                  {title}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                  {body}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="how" className="border-y border-black/5 bg-[var(--sand)] py-20 lg:py-28">
+      <section
+        id="how"
+        className="border-y border-black/5 bg-[var(--sand)] py-20 lg:py-28"
+      >
         <div className="mx-auto max-w-6xl px-5 lg:px-8">
           <div className="text-center max-w-xl mx-auto">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--g-green)]">
@@ -214,19 +268,41 @@ export default function HomePage() {
 
           <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { n: "01", title: "Register learners", desc: "Add students by class with photos and guardian details." },
-              { n: "02", title: "Enter assessment", desc: "Record SBA and examination marks subject by subject." },
-              { n: "03", title: "Verify totals", desc: "System grades, ranks and flags incomplete records." },
-              { n: "04", title: "Issue reports", desc: "Generate consistent PDF terminal reports for the class." },
+              {
+                n: "01",
+                title: "Register learners",
+                desc: "Add students by class with photos and guardian details.",
+              },
+              {
+                n: "02",
+                title: "Enter assessment",
+                desc: "Record SBA and examination marks subject by subject.",
+              },
+              {
+                n: "03",
+                title: "Verify totals",
+                desc: "System grades, ranks and flags incomplete records.",
+              },
+              {
+                n: "04",
+                title: "Issue reports",
+                desc: "Generate consistent PDF terminal reports for the class.",
+              },
             ].map((step, i) => (
               <div key={step.n} className="relative">
                 {i < 3 && (
                   <div className="absolute top-8 left-[calc(50%+40px)] hidden h-px w-[calc(100%-20px)] bg-[var(--g-green)]/20 lg:block" />
                 )}
                 <div className="rounded-2xl bg-white border border-black/5 p-6 h-full transition-transform duration-300 hover:-translate-y-1">
-                  <div className="font-display text-3xl font-medium text-[var(--g-green)]">{step.n}</div>
-                  <h3 className="mt-3 font-semibold tracking-tight">{step.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{step.desc}</p>
+                  <div className="font-display text-3xl font-medium text-[var(--g-green)]">
+                    {step.n}
+                  </div>
+                  <h3 className="mt-3 font-semibold tracking-tight">
+                    {step.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                    {step.desc}
+                  </p>
                 </div>
               </div>
             ))}
@@ -245,8 +321,8 @@ export default function HomePage() {
                 Aligned with how basic schools actually assess.
               </h2>
               <p className="mt-4 text-[15px] leading-7 text-[var(--muted)]">
-                EduReport follows Ghana Education Service practice — continuous
-                assessment, terminal examinations, attendance, conduct and dual remarks.
+                EduReport brings together continuous assessment, terminal
+                examinations, attendance, conduct and dual remarks.
               </p>
               <ul className="mt-8 space-y-3">
                 {[
@@ -257,7 +333,11 @@ export default function HomePage() {
                   "Class teacher and headteacher remarks",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3 text-sm">
-                    <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-[var(--g-green)]" strokeWidth={2} />
+                    <CheckCircle2
+                      size={18}
+                      className="mt-0.5 shrink-0 text-[var(--g-green)]"
+                      strokeWidth={2}
+                    />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -267,14 +347,21 @@ export default function HomePage() {
             <div className="relative">
               <div className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-[var(--g-green)]/10 via-[var(--g-gold)]/10 to-[var(--g-red)]/10 blur-2xl" />
               <div className="relative overflow-hidden rounded-3xl border border-black/5 shadow-2xl shadow-black/10">
-                <img
+                <Image
                   src={HERO_IMG}
+                  width={800}
+                  height={600}
+                  sizes="(max-width: 1024px) 100vw, 50vw"
                   alt="Students at a Ghanaian basic school"
                   className="aspect-[4/3] w-full object-cover"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-16">
-                  <div className="text-white font-semibold">Every learner deserves a clear report</div>
-                  <div className="text-sm text-white/70 mt-1">Proudly built for Ghanaian classrooms</div>
+                  <div className="text-white font-semibold">
+                    Every learner deserves a clear report
+                  </div>
+                  <div className="text-sm text-white/70 mt-1">
+                    Proudly built for Ghanaian classrooms
+                  </div>
                 </div>
               </div>
             </div>
@@ -292,32 +379,17 @@ export default function HomePage() {
               Sign in to your school workspace
             </p>
           </div>
-          <Link href="/login" className="btn-gold shrink-0 shadow-lg shadow-black/20">
+          <Link
+            href="/login"
+            className="btn-gold shrink-0 shadow-lg shadow-black/20"
+          >
             Sign in
             <ArrowRight size={16} />
           </Link>
         </div>
       </section>
 
-      <footer className="border-t border-black/5 bg-[var(--cream)]">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-10 md:flex-row md:items-center md:justify-between lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--g-green)] text-white">
-              <GraduationCap size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-bold">EduReport</div>
-              <div className="text-[11px] text-[var(--muted)]">Terminal Report System · Ghana</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[var(--g-red)]" />
-            <span className="h-2 w-2 rounded-full bg-[var(--g-gold)]" />
-            <span className="h-2 w-2 rounded-full bg-[var(--g-green)]" />
-            <span className="ml-2 text-xs text-[var(--muted)]">For Ghanaian basic schools</span>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </main>
   );
 }
