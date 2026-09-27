@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Terminal Report System | Ghana Basic Schools",
-  description: "Automated GES-aligned terminal report card system for Ghanaian basic schools",
+  title: "EduReport · Terminal Report System for Ghana Basic Schools",
+  description:
+    "Automated GES-aligned terminal report card system — SBA, exams, attendance, and professional PDF reports for Ghanaian basic schools.",
 };
 
 export default function RootLayout({
@@ -13,9 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen antialiased">
-        {children}
-      </body>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
 }
