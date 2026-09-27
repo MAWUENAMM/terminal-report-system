@@ -15,6 +15,9 @@ import {
   Users,
 } from "lucide-react";
 
+const HERO_IMG =
+  "https://raw.githubusercontent.com/MAWUENAMM/terminal-report-system/main/hero-students.jpg";
+
 function useCountUp(target: number, duration = 1600) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -71,7 +74,7 @@ export default function HomePage() {
       <section className="relative min-h-[100svh] flex items-end pb-16 pt-28 lg:items-center lg:pb-0">
         <div className="absolute inset-0">
           <img
-            src="/hero-students.jpg"
+            src={HERO_IMG}
             alt="Ghanaian basic school students in uniform"
             className="h-full w-full object-cover object-[center_20%]"
           />
@@ -266,7 +269,7 @@ export default function HomePage() {
               <div className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-[var(--g-green)]/10 via-[var(--g-gold)]/10 to-[var(--g-red)]/10 blur-2xl" />
               <div className="relative overflow-hidden rounded-3xl border border-black/5 shadow-2xl shadow-black/10">
                 <img
-                  src="/hero-students.jpg"
+                  src={HERO_IMG}
                   alt="Students at a Ghanaian basic school"
                   className="aspect-[4/3] w-full object-cover"
                 />
