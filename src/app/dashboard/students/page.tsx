@@ -5,7 +5,7 @@ import { store } from "@/lib/store";
 import { Student, Class } from "@/types";
 import { formatName } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
-import { Plus, Search, Pencil } from "lucide-react";
+import { Plus, Search, Pencil, X, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -14,12 +14,15 @@ export default function StudentsPage() {
   const [classFilter, setClassFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
+  const [formError, setFormError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [form, setForm] = useState({
     admissionNumber: "",
     firstName: "",
     lastName: "",
     otherNames: "",
     gender: "M" as "M" | "F",
+    dateOfBirth: "",
     classId: "",
     guardianName: "",
     guardianPhone: "",
@@ -78,11 +81,13 @@ export default function StudentsPage() {
       lastName: "",
       otherNames: "",
       gender: "M",
+      dateOfBirth: "",
       classId: classes[0]?.id || "",
       guardianName: "",
       guardianPhone: "",
       photoUrl: "",
     });
+    setFormError("");
     setShowForm(true);
   }
 
@@ -94,11 +99,13 @@ export default function StudentsPage() {
       lastName: s.lastName,
       otherNames: s.otherNames || "",
       gender: s.gender,
+      dateOfBirth: s.dateOfBirth || "",
       classId: s.classId,
       guardianName: s.guardianName || "",
       guardianPhone: s.guardianPhone || "",
       photoUrl: s.photoUrl || "",
     });
+    setFormError("");
     setShowForm(true);
   }
 
@@ -107,7 +114,7 @@ export default function StudentsPage() {
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      window.alert("Please choose a photo smaller than 2 MB.");
+      setFormError("Please choose a photo smaller than 2 MB.");
       e.target.value = "";
       return;
     }
@@ -119,38 +126,60 @@ export default function StudentsPage() {
 
   function saveStudent(e: React.FormEvent) {
     e.preventDefault();
+    setFormError("");
+
+    const admissionNumber = form.admissionNumber.trim();
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+
+    if (!admissionNumber || !firstName || !lastName || !form.classId) {
+      setFormError("Complete all required fields before saving.");
+      return;
+    }
+
     const all = store.getStudents();
+    const duplicate = all.some(
+      (s) =>
+        s.id !== editing?.id &&
+        s.admissionNumber.trim().toLowerCase() === admissionNumber.toLowerCase()
+    );
+
+    if (duplicate) {
+      setFormError("That admission number is already assigned to another student.");
+      return;
+    }
+
+    const normalized = {
+      ...form,
+      admissionNumber,
+      firstName,
+      lastName,
+      otherNames: form.otherNames.trim() || undefined,
+      guardianName: form.guardianName.trim() || undefined,
+      guardianPhone: form.guardianPhone.trim() || undefined,
+      dateOfBirth: form.dateOfBirth || undefined,
+      photoUrl: form.photoUrl || undefined,
+    };
+
     if (editing) {
       store.saveStudents(
-        all.map((s) =>
-          s.id === editing.id
-            ? {
-                ...s,
-                ...form,
-                otherNames: form.otherNames || undefined,
-                guardianName: form.guardianName || undefined,
-                guardianPhone: form.guardianPhone || undefined,
-                photoUrl: form.photoUrl || undefined,
-              }
-            : s
-        )
+        all.map((s) => (s.id === editing.id ? { ...s, ...normalized } : s))
       );
     } else {
       store.saveStudents([
         ...all,
         {
           id: uuidv4(),
-          ...form,
-          otherNames: form.otherNames || undefined,
-          guardianName: form.guardianName || undefined,
-          guardianPhone: form.guardianPhone || undefined,
-          photoUrl: form.photoUrl || undefined,
+          ...normalized,
           status: "ACTIVE" as const,
           createdAt: new Date().toISOString(),
         },
       ]);
     }
+
     setShowForm(false);
+    setSuccessMessage(editing ? "Student profile updated successfully." : "Student added successfully.");
+    window.setTimeout(() => setSuccessMessage(""), 3500);
     refresh();
   }
 
@@ -160,6 +189,13 @@ export default function StudentsPage() {
 
   return (
     <div>
+      {successMessage && (
+        <div className="mb-5 flex items-center gap-3 rounded-xl border border-[var(--g-green)]/20 bg-[var(--g-green)]/5 px-4 py-3 text-sm text-[var(--g-green)]" role="status">
+          <CheckCircle2 size={17} />
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
       <div className="animate-fade-up">
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
@@ -286,10 +322,30 @@ export default function StudentsPage() {
           }}
         >
           <div className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-            <div className="border-b border-line p-6">
-              <h2 id="student-form-title" className="text-lg font-semibold">{editing ? "Edit student" : "Add student"}</h2>
+            <div className="flex items-start justify-between border-b border-line p-6">
+              <div>
+                <div className="eyebrow">Learner profile</div>
+                <h2 id="student-form-title" className="mt-1 text-lg font-semibold">{editing ? "Edit student" : "Add student"}</h2>
+                <p className="mt-1 text-sm text-muted">
+                  {editing ? "Update the learner's details below." : "Create a complete learner profile for the school register."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                aria-label="Close student form"
+                className="rounded-full p-2 text-muted transition hover:bg-paper hover:text-ink"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={saveStudent} className="space-y-4 p-6">
+            <form onSubmit={saveStudent} className="space-y-5 p-6">
+              {formError && (
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                  <AlertCircle size={17} className="mt-0.5 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
               <div className="flex items-center gap-4">
                 <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-paper">
                   {form.photoUrl ? (
@@ -342,7 +398,7 @@ export default function StudentsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">First name *</label>
                   <input
@@ -370,8 +426,18 @@ export default function StudentsPage() {
                   className="field"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Gender *</label>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Date of birth</label>
+                  <input
+                    type="date"
+                    value={form.dateOfBirth}
+                    onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                    className="field"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Gender *</label>
                 <select
                   value={form.gender}
                   onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value as "M" | "F" }))}
@@ -381,7 +447,7 @@ export default function StudentsPage() {
                   <option value="F">Female</option>
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">Guardian name</label>
                   <input
@@ -401,7 +467,7 @@ export default function StudentsPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" className="btn-primary flex-1">
-                  Save
+                  {editing ? "Save changes" : "Add student"}
                 </button>
                 <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
                   Cancel
