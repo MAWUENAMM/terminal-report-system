@@ -10,6 +10,7 @@ import {
   X,
   Users,
   Building2,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
 import { store } from "@/lib/store";
@@ -47,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     classes: [],
   });
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,6 +99,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     .join("");
 
   const hasResults = results.students.length > 0 || results.classes.length > 0;
+
+  function logout() {
+    store.setCurrentUser(null);
+    setProfileOpen(false);
+    router.replace("/login");
+  }
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -260,16 +268,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <button className="rounded-full p-2 text-muted hover:bg-line/40">
                 <Bell size={17} />
               </button>
-              <div className="ml-1 flex items-center gap-2 border-l border-line pl-3">
-                <div className="grid h-8 w-8 place-items-center rounded-full bg-[var(--g-green)] text-[10px] font-bold text-white">
-                  {initials}
-                </div>
-                <div className="hidden sm:block">
-                  <div className="text-xs font-semibold text-ink">{user?.name}</div>
-                  <div className="text-[10px] capitalize text-muted">
-                    {user?.role?.split("_").join(" ")}
+              <div className="relative ml-1 border-l border-line pl-3">
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((value) => !value)}
+                  aria-label="Open profile menu"
+                  aria-expanded={profileOpen}
+                  className="flex items-center gap-2 rounded-xl p-1.5 transition hover:bg-paper"
+                >
+                  <div className="grid h-8 w-8 place-items-center rounded-full bg-[var(--g-green)] text-[10px] font-bold text-white">
+                    {initials}
                   </div>
-                </div>
+                  <div className="hidden sm:block text-left">
+                    <div className="text-xs font-semibold text-ink">{user?.name}</div>
+                    <div className="text-[10px] capitalize text-muted">
+                      {user?.role?.split("_").join(" ")}
+                    </div>
+                  </div>
+                </button>
+
+                {profileOpen && (
+                  <div className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-white shadow-xl shadow-black/10">
+                    <div className="border-b border-line bg-paper/60 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--g-green)] text-xs font-bold text-white">
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-ink">{user?.name}</div>
+                          <div className="truncate text-xs text-muted">{user?.email}</div>
+                          <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--g-green)]">
+                            {user?.role?.split("_").join(" ")}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-2">
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                      >
+                        <LogOut size={16} />
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
