@@ -343,8 +343,8 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="flex gap-2 lg:justify-end">
-            <button onClick={ensureDemoRemarks} className="btn-secondary">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row lg:justify-end">
+            <button onClick={ensureDemoRemarks} className="btn-secondary w-full sm:w-auto">
               Prepare demo data
             </button>
             <button
