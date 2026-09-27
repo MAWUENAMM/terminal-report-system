@@ -22,3 +22,13 @@ The demonstration school uses fictional learners. Initial account passwords are 
 - Reopening is deliberately limited to the most recent term before a later one is started. No existing closed term is automatically reopened by this migration.
 
 - Follow-up production build and TypeScript passed; ESLint reported no errors and the same five pre-existing navigation/font warnings. Supabase security advisors reported no new database warnings. Authenticated visual browser verification remains unavailable in this execution environment.
+
+## Platform school management follow-up
+
+- Added a paginated platform-only school directory, creation with initial administrator/term, editable contact details, activation/deactivation, reversible deletion and restore, and platform history. Existing approved schools are included automatically.
+- `tests/platform-schools.sql` passed against the trial schema. It checks ordinary-admin/teacher/anonymous denials, existing-token suspension, blocked school mutations, preserved staff/learners/archived reports across delete and restore, operator access independent of tenant status, input validation, atomic request approval/provisioning, initial-password enforcement, protected audit records and public statistics. Every test record and trial DDL change was rolled back before applying the final migration.
+- The full existing `tests/permissions.sql` suite also passed with the new schema, including term recovery and headmaster enrolment permissions.
+- Ten Node tests passed. Five new tests execute the Edge handler with controlled Auth/database adapters to verify identity checks, service-role staff-operation suspension, caller-JWT forwarding for provisioning, platform operations when the owner's tenant is inactive, and Auth identity cleanup on provisioning failure. These are adapter tests, not live Auth round trips.
+- Production build and TypeScript passed. ESLint has no errors; seven advisory warnings cover the shared font and full-page transitions used to clear authenticated UI state.
+- Authenticated visual browser interaction remains unavailable for the environment limitation described above. No real school was created, suspended, deleted or restored for testing.
+- Deployed the finalized Supabase migration and `school-admin` function. Live unauthenticated requests to both the school directory RPC and school creation handler return HTTP 401. Security advisors report no new database findings; the previously documented Auth advisory is unchanged. Both existing schools remain active with their original staff/learner counts and all three archived reports preserved; no platform test identities remain.

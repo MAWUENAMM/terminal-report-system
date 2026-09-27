@@ -21,6 +21,10 @@ export interface Profile {
 export interface School {
   id: string;
   name: string;
+  active: boolean;
+  deleted_at: string | null;
+  status_reason: string;
+  status_changed_at: string;
   address?: string;
   phone?: string;
   email?: string;
