@@ -12,10 +12,10 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const { student, school, class: cls, scores, attendance, affective, remarks, overallAverage, overallGrade, overallPosition, totalStudents } = data;
 
   // Header bar
-  doc.setFillColor(27, 79, 114);
+  doc.setFillColor(16, 24, 40);
   doc.rect(0, 0, pageWidth, 28, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
+  doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
   doc.text(school.name.toUpperCase(), pageWidth / 2, 10, { align: "center" });
   doc.setFontSize(9);
@@ -23,7 +23,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   if (school.address) doc.text(school.address, pageWidth / 2, 16, { align: "center" });
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("TERMINAL REPORT", pageWidth / 2, 23, { align: "center" });
+  doc.setFillColor(252, 209, 22);\n  doc.roundedRect(pageWidth / 2 - 27, 18, 54, 8, 2, 2, "F");\n  doc.setTextColor(16, 24, 40);\n  doc.setFontSize(9);\n  doc.text("TERMINAL REPORT", pageWidth / 2, 23.5, { align: "center" });\n  doc.setDrawColor(0, 107, 63);\n  doc.setLineWidth(1.2);\n  doc.line(margin, 29, pageWidth - margin, 29);
 
   y = 34;
   doc.setTextColor(30, 30, 30);
@@ -73,7 +73,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     head: [["Subject", "SBA (50)", "Exam (50)", "Total", "Grade", "Pos.", "Remarks"]],
     body: tableBody,
     theme: "grid",
-    headStyles: { fillColor: [27, 79, 114], textColor: 255, fontSize: 8, fontStyle: "bold" },
+    headStyles: { fillColor: [16, 24, 40], textColor: 255, fontSize: 8, fontStyle: "bold" },
     bodyStyles: { fontSize: 8 },
     columnStyles: {
       0: { cellWidth: 42 },
@@ -93,7 +93,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
   doc.text("Overall Average: " + overallAverage.toFixed(1) + "%", leftX, y);
-  doc.text("Overall Grade: " + overallGrade, midX, y);
+  doc.text("Overall Grade: " + overallGrade, midX, y);\n  doc.setTextColor(16, 24, 40);
   y += 6;
 
   if (attendance) {
