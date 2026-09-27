@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowRight, BarChart3, BookOpenCheck, ClipboardCheck, FileText, GraduationCap, TrendingUp, UsersRound } from "lucide-react";
 import { store } from "@/lib/store";
 import { School, Student, Class, Score } from "@/types";
-import Link from "next/link";
 
 export default function DashboardPage() {
   const [school, setSchool] = useState<School | null>(null);
@@ -12,6 +13,7 @@ export default function DashboardPage() {
   const [scores, setScores] = useState<Score[]>([]);
 
   useEffect(() => {
+    store.seed();
     setSchool(store.getSchool());
     setStudents(store.getStudents());
     setClasses(store.getClasses());
@@ -19,77 +21,79 @@ export default function DashboardPage() {
   }, []);
 
   const activeStudents = students.filter(s => s.status === "ACTIVE");
+  const completion = activeStudents.length ? Math.min(100, Math.round((scores.length / Math.max(1, activeStudents.length * 5)) * 100)) : 0;
+  const average = scores.length ? (scores.reduce((a,s)=>a+s.total,0)/scores.length).toFixed(1) : "0.0";
+
+  const classRows = useMemo(() => classes.map(c => ({
+    ...c,
+    count: activeStudents.filter(s=>s.classId===c.id).length,
+    avg: (() => { const x=scores.filter(s=>s.classId===c.id); return x.length ? (x.reduce((a,s)=>a+s.total,0)/x.length).toFixed(1) : "—"; })()
+  })), [classes,activeStudents,scores]);
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-600">
-          {school?.name} · {school?.academicYear} · Term {school?.currentTerm}
-        </p>
-      </div>
+    <div className="space-y-7">
+      <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="eyebrow">School overview</div>
+          <h1 className="page-title mt-2">{school?.name || "School Dashboard"}</h1>
+          <p className="mt-2 text-sm text-slate-500">{school?.academicYear || "Academic year"} · Term {school?.currentTerm || 1} · {school?.district || "School administration"}</p>
+        </div>
+        <Link href="/dashboard/reports" className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary-700/10 hover:bg-primary-800">
+          Open report centre <ArrowRight size={16}/>
+        </Link>
+      </header>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Active Students", value: activeStudents.length, color: "bg-blue-500" },
-          { label: "Classes", value: classes.length, color: "bg-emerald-500" },
-          { label: "Subjects Tracked", value: store.getSubjects().length, color: "bg-violet-500" },
-          { label: "Scores Entered", value: scores.length, color: "bg-amber-500" },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-            <div className={`w-10 h-10 ${stat.color} rounded-lg mb-3 opacity-90`}></div>
-            <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
-            <div className="text-sm text-slate-500">{stat.label}</div>
+          ["Active students",activeStudents.length,UsersRound,"Learner records"],
+          ["Classes",classes.length,GraduationCap,"Configured classes"],
+          ["Scores entered",scores.length,ClipboardCheck,"Assessment records"],
+          ["Class average",average+"%",TrendingUp,"Across entered scores"],
+        ].map(([label,value,Icon,sub]:any)=>(
+          <div key={label} className="surface rounded-2xl p-5">
+            <div className="flex items-start justify-between"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Icon size={19}/></div><span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Live</span></div>
+            <div className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">{value}</div>
+            <div className="mt-1 text-sm font-medium text-slate-700">{label}</div>
+            <div className="mt-1 text-xs text-slate-400">{sub}</div>
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="font-semibold text-lg mb-4">Quick Actions</h2>
-          <div className="space-y-3">
-            <Link href="/dashboard/scores" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100 transition">
-              <span className="text-xl">📝</span>
-              <div>
-                <div className="font-medium">Enter / Edit Scores</div>
-                <div className="text-sm text-slate-500">SBA and examination marks</div>
-              </div>
-            </Link>
-            <Link href="/dashboard/reports" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100 transition">
-              <span className="text-xl">📄</span>
-              <div>
-                <div className="font-medium">Generate Report Cards</div>
-                <div className="text-sm text-slate-500">PDF terminal reports</div>
-              </div>
-            </Link>
-            <Link href="/dashboard/students" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100 transition">
-              <span className="text-xl">👨‍🎓</span>
-              <div>
-                <div className="font-medium">Manage Students</div>
-                <div className="text-sm text-slate-500">Add photos, update details</div>
-              </div>
-            </Link>
+      <section className="grid gap-5 xl:grid-cols-[1.5fr_.8fr]">
+        <div className="surface rounded-2xl p-6">
+          <div className="flex items-center justify-between">
+            <div><div className="eyebrow">Academic progress</div><h2 className="mt-1 text-lg font-semibold">Assessment completion</h2></div>
+            <BarChart3 size={19} className="text-slate-400"/>
           </div>
+          <div className="mt-7 flex items-end justify-between"><div className="text-4xl font-semibold tracking-tight">{completion}%</div><div className="text-xs text-slate-500">{scores.length} records captured</div></div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-primary-600 transition-all" style={{width:`${completion}%`}}/></div>
+          <div className="mt-3 flex justify-between text-xs text-slate-400"><span>Data entry progress</span><span>Target: complete term records</span></div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="font-semibold text-lg mb-4">Classes</h2>
-          <div className="space-y-2">
-            {classes.map((c) => {
-              const count = students.filter(s => s.classId === c.id && s.status === "ACTIVE").length;
-              return (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
-                  <div>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-sm text-slate-500">{c.level}</div>
-                  </div>
-                  <div className="text-sm font-medium text-slate-700">{count} students</div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="rounded-2xl bg-[#101828] p-6 text-white shadow-xl shadow-slate-900/10">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><FileText size={19}/></div>
+          <div className="mt-8 text-lg font-semibold">Ready to issue reports?</div>
+          <p className="mt-2 text-sm leading-6 text-slate-400">Review scores, attendance and remarks before generating branded terminal reports.</p>
+          <Link href="/dashboard/reports" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900">Go to reports <ArrowRight size={15}/></Link>
         </div>
-      </div>
+      </section>
+
+      <section className="surface overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+          <div><div className="eyebrow">School structure</div><h2 className="mt-1 text-lg font-semibold">Classes at a glance</h2></div>
+          <Link href="/dashboard/classes" className="text-xs font-semibold text-primary-700 hover:underline">Manage classes</Link>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {classRows.map(c=>(
+            <div key={c.id} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/70">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><BookOpenCheck size={18}/></div>
+              <div className="min-w-0 flex-1"><div className="font-medium text-slate-800">{c.name}</div><div className="text-xs text-slate-400">{c.level} · {c.count} students</div></div>
+              <div className="text-right"><div className="text-sm font-semibold text-slate-800">{c.avg}{c.avg!=="—" ? "%" : ""}</div><div className="text-[10px] uppercase tracking-wider text-slate-400">Average</div></div>
+            </div>
+          ))}
+          {classRows.length===0 && <div className="px-6 py-12 text-center text-sm text-slate-500">No classes configured yet.</div>}
+        </div>
+      </section>
     </div>
   );
 }
