@@ -351,7 +351,7 @@ export default function ScoresPage() {
                 ].map((heading, index) => (
                   <th
                     key={heading}
-                    className={`px-3 py-3 text-${index === 0 ? "left" : "center"} text-[10px] font-bold uppercase tracking-wider text-muted first:pl-5 last:pr-5`}
+                    className={`px-3 py-3 ${index === 0 ? "text-left" : "text-center"} text-[10px] font-bold uppercase tracking-wider text-muted first:pl-5 last:pr-5`}
                   >
                     {heading}
                   </th>
