@@ -135,7 +135,8 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="animate-fade-up">
+    <div>
+      <div className="animate-fade-up">
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="eyebrow">Student information</div>
@@ -246,6 +247,8 @@ export default function StudentsPage() {
         <div className="border-t border-line px-5 py-3 text-xs text-muted">
           Showing {filtered.length} of {students.filter((s) => s.status === "ACTIVE").length} students
         </div>
+      </div>
+
       </div>
 
       {showForm && (
