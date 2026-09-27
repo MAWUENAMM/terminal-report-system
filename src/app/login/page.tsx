@@ -95,9 +95,10 @@ export default function LoginPage() {
               Back
             </Link>
 
-            <div
-              className="mb-8 flex items-center gap-3 lg:hidden"
-              aria-label="EduReport"
+            <Link
+              href="/"
+              className="mb-8 flex w-fit items-center gap-3 rounded-xl transition-opacity hover:opacity-85 focus:outline-none focus:ring-2 focus:ring-[var(--g-green)]/30 lg:hidden"
+              aria-label="EduReport home"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--g-green)] text-white shadow-sm">
                 <GraduationCap size={20} />
@@ -108,7 +109,7 @@ export default function LoginPage() {
                   Ghana Basic Schools
                 </span>
               </div>
-            </div>
+            </Link>
 
             <div className="eyebrow">Welcome</div>
             <h2 className="font-display mt-2 text-[2rem] font-medium leading-tight tracking-[-0.02em] sm:text-3xl">
