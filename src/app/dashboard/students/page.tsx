@@ -37,6 +37,23 @@ export default function StudentsPage() {
     refresh();
   }, []);
 
+  useEffect(() => {
+    if (!showForm) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowForm(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showForm]);
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return students
@@ -88,6 +105,13 @@ export default function StudentsPage() {
   function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      window.alert("Please choose a photo smaller than 2 MB.");
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => setForm((f) => ({ ...f, photoUrl: reader.result as string }));
     reader.readAsDataURL(file);
@@ -252,10 +276,18 @@ export default function StudentsPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="student-form-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowForm(false);
+          }}
+        >
+          <div className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
             <div className="border-b border-line p-6">
-              <h2 className="text-lg font-semibold">{editing ? "Edit student" : "Add student"}</h2>
+              <h2 id="student-form-title" className="text-lg font-semibold">{editing ? "Edit student" : "Add student"}</h2>
             </div>
             <form onSubmit={saveStudent} className="space-y-4 p-6">
               <div className="flex items-center gap-4">
