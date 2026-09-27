@@ -104,7 +104,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="hidden sm:block">
                   <div className="text-xs font-semibold text-ink">{user?.name}</div>
                   <div className="text-[10px] text-muted">
-                    {user?.role?.replaceAll("_", " ")}
+                    {user?.role?.split("_").join(" ")}
                   </div>
                 </div>
               </div>

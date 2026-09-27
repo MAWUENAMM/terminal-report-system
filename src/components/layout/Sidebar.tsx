@@ -92,7 +92,7 @@ export function Sidebar() {
             <div className="min-w-0">
               <div className="truncate text-[13px] font-medium">{user?.name || "User"}</div>
               <div className="truncate text-[10px] text-white/40">
-                {user?.role?.replaceAll("_", " ") || "Staff"}
+                {user?.role?.split("_").join(" ") || "Staff"}
               </div>
             </div>
           </div>

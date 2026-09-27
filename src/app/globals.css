@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap');
-
 :root {
   --ink: #0b1220;
   --ink-soft: #1a2332;
@@ -25,7 +23,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--paper);
-  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -43,7 +41,7 @@ body {
   .surface {
     @apply border bg-[var(--paper-elevated)];
     border-color: var(--line);
-    box-shadow: 0 1px 0 rgba(11,18,32,0.04), 0 12px 40px rgba(11,18,32,0.04);
+    box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 40px rgba(11, 18, 32, 0.04);
   }
 
   .eyebrow {
@@ -63,14 +61,16 @@ body {
   }
   .field:focus {
     border-color: var(--ink);
-    box-shadow: 0 0 0 3px rgba(11,18,32,0.08);
+    box-shadow: 0 0 0 3px rgba(11, 18, 32, 0.08);
   }
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-white transition;
     background: var(--ink);
   }
-  .btn-primary:hover { background: var(--ink-soft); }
+  .btn-primary:hover {
+    background: var(--ink-soft);
+  }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold transition;
@@ -78,12 +78,16 @@ body {
     background: #fff;
     color: var(--ink);
   }
-  .btn-secondary:hover { background: var(--paper); }
+  .btn-secondary:hover {
+    background: var(--paper);
+  }
 
   .btn-gold {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition;
     background: var(--gold);
     color: var(--ink);
   }
-  .btn-gold:hover { filter: brightness(0.95); }
+  .btn-gold:hover {
+    filter: brightness(0.95);
+  }
 }
