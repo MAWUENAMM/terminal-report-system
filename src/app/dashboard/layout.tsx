@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
@@ -8,12 +8,14 @@ import {
   Menu,
   Search,
   X,
+  Users,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { store } from "@/lib/store";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { User } from "@/types";
-import { cn } from "@/lib/utils";
+import { User, Student, Class } from "@/types";
+import { cn, formatName } from "@/lib/utils";
 
 const titles: Record<string, string> = {
   "/dashboard": "Overview",
@@ -39,6 +41,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ students: Student[]; classes: Class[] }>({
+    students: [],
+    classes: [],
+  });
+  const [open, setOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     store.seed();
@@ -50,6 +59,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setUser(u);
     setReady(true);
   }, [router]);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  useEffect(() => {
+    if (query.trim().length < 1) {
+      setResults({ students: [], classes: [] });
+      return;
+    }
+    setResults(store.search(query));
+    setOpen(true);
+  }, [query]);
 
   if (!ready) {
     return (
@@ -67,6 +95,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     .map((x) => x[0])
     .slice(0, 2)
     .join("");
+
+  const hasResults = results.students.length > 0 || results.classes.length > 0;
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -122,7 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <main className="min-w-0 flex-1 overflow-auto">
         <div className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur-md">
-          <div className="mx-auto flex h-[60px] max-w-[1400px] items-center justify-between px-4 md:px-7">
+          <div className="mx-auto flex h-[60px] max-w-[1400px] items-center justify-between gap-4 px-4 md:px-7">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobile(true)}
@@ -130,7 +160,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               >
                 <Menu size={18} />
               </button>
-              <div>
+              <div className="hidden sm:block">
                 <div className="text-[14px] font-semibold tracking-tight text-ink">
                   {titles[pathname] || "Workspace"}
                 </div>
@@ -138,11 +168,95 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs text-muted md:flex">
-                <Search size={13} />
-                Search
+            <div className="relative flex-1 max-w-md" ref={searchRef}>
+              <div className="flex items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-2 text-sm">
+                <Search size={15} className="shrink-0 text-muted" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => query.trim() && setOpen(true)}
+                  placeholder="Search students, classes…"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+                />
+                {query && (
+                  <button
+                    onClick={() => {
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                    className="text-muted hover:text-ink"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
+
+              {open && query.trim() && (
+                <div className="absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-2xl border border-line bg-white shadow-xl shadow-black/10">
+                  {!hasResults && (
+                    <div className="px-4 py-6 text-center text-sm text-muted">
+                      No results for &ldquo;{query}&rdquo;
+                    </div>
+                  )}
+                  {results.students.length > 0 && (
+                    <div>
+                      <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                        Students
+                      </div>
+                      {results.students.map((s) => (
+                        <Link
+                          key={s.id}
+                          href="/dashboard/students"
+                          onClick={() => {
+                            setOpen(false);
+                            setQuery("");
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-paper"
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--g-green)]/10 text-[var(--g-green)]">
+                            <Users size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">
+                              {formatName(s.firstName, s.lastName, s.otherNames)}
+                            </div>
+                            <div className="text-[11px] text-muted">{s.admissionNumber}</div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {results.classes.length > 0 && (
+                    <div className="border-t border-line">
+                      <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                        Classes
+                      </div>
+                      {results.classes.map((c) => (
+                        <Link
+                          key={c.id}
+                          href="/dashboard/classes"
+                          onClick={() => {
+                            setOpen(false);
+                            setQuery("");
+                          }}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-paper"
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--g-gold)]/20 text-ink">
+                            <Building2 size={14} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">{c.name}</div>
+                            <div className="text-[11px] capitalize text-muted">{c.level.toLowerCase()}</div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
               <button className="rounded-full p-2 text-muted hover:bg-line/40">
                 <Bell size={17} />
               </button>

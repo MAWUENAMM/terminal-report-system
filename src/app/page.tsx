@@ -38,9 +38,9 @@ function useCountUp(target: number, duration = 1600) {
 }
 
 export default function HomePage() {
-  const students = useCountUp(428);
-  const classes = useCountUp(14);
-  const reports = useCountUp(96);
+  const students = useCountUp(66);
+  const classes = useCountUp(11);
+  const reports = useCountUp(100);
 
   return (
     <main className="min-h-screen bg-[var(--cream)] text-[var(--ink)] overflow-x-hidden">
@@ -65,7 +65,7 @@ export default function HomePage() {
             <a href="#why" className="hover:text-white transition">Why EduReport</a>
           </nav>
           <Link href="/login" className="btn-gold !py-2.5 !px-5 text-[13px] animate-fade-in delay-1">
-            Open system
+            Sign in
             <ArrowRight size={15} />
           </Link>
         </div>
@@ -101,7 +101,7 @@ export default function HomePage() {
 
             <div className="animate-fade-up delay-3 mt-8 flex flex-wrap gap-3">
               <Link href="/login" className="btn-gold">
-                Launch demonstration
+                Open workspace
                 <ArrowRight size={16} />
               </Link>
               <a href="#how" className="btn-outline-light">
@@ -111,9 +111,9 @@ export default function HomePage() {
 
             <div className="animate-fade-up delay-4 mt-12 grid grid-cols-3 gap-4 border-t border-white/15 pt-8 max-w-md">
               {[
-                [students, "+", "Learners tracked"],
-                [classes, "", "Active classes"],
-                [reports, "%", "Reports ready"],
+                [students, "", "Learners"],
+                [classes, "", "Classes"],
+                [reports, "%", "Coverage"],
               ].map(([val, suffix, label]) => (
                 <div key={String(label)}>
                   <div className="text-2xl font-bold text-white tabular-nums">
@@ -245,17 +245,16 @@ export default function HomePage() {
                 Aligned with how basic schools actually assess.
               </h2>
               <p className="mt-4 text-[15px] leading-7 text-[var(--muted)]">
-                Not a generic foreign template. EduReport follows Ghana Education
-                Service practice — continuous assessment, terminal examinations,
-                attendance, conduct and dual remarks.
+                EduReport follows Ghana Education Service practice — continuous
+                assessment, terminal examinations, attendance, conduct and dual remarks.
               </p>
               <ul className="mt-8 space-y-3">
                 {[
+                  "KG 1–2, Primary 1–6, and JHS 1–3",
                   "Configurable SBA and exam weighting (default 50:50)",
                   "Letter grades with clear descriptors",
                   "Attendance and affective domain on every report",
                   "Class teacher and headteacher remarks",
-                  "Class position and on-roll totals",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3 text-sm">
                     <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-[var(--g-green)]" strokeWidth={2} />
@@ -287,14 +286,14 @@ export default function HomePage() {
         <div className="relative mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-5 md:flex-row md:items-center lg:px-8">
           <div>
             <h2 className="font-display text-2xl font-medium text-white sm:text-3xl">
-              Walk stakeholders through a live term.
+              Start managing this term&apos;s reports.
             </h2>
             <p className="mt-2 text-sm text-white/70">
-              Browser-based demonstration · no install · ready in seconds
+              Sign in to your school workspace
             </p>
           </div>
           <Link href="/login" className="btn-gold shrink-0 shadow-lg shadow-black/20">
-            Enter demonstration
+            Sign in
             <ArrowRight size={16} />
           </Link>
         </div>
