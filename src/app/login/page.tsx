@@ -41,7 +41,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-paper">
+    <main className="min-h-[100svh] bg-paper">
       <div className="kente-bar" />
       <div className="grid min-h-[calc(100vh-4px)] lg:grid-cols-2">
         <section className="relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-16">
