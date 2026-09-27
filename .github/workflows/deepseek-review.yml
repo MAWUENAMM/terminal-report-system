@@ -1,0 +1,15 @@
+name: DeepSeek Code Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: deepseek-ai/code-review-action@<full-commit-sha>
+        with:
+          deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          model: deepseek-coder
+          review_scope: diff  # or "full" for smaller PRs
