@@ -73,6 +73,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
+    if (!mobile) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobile(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobile]);
+
+  useEffect(() => {
     if (query.trim().length < 1) {
       setResults({ students: [], classes: [] });
       return;
@@ -116,7 +133,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setMobile(false)}
           />
-          <div className="relative flex h-full w-[280px] flex-col bg-[var(--g-green)] text-white">
+          <div className="relative flex h-full w-[min(86vw,320px)] flex-col bg-[var(--g-green)] text-white">
             <div className="kente-bar" />
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
               <div className="flex items-center gap-2.5">
@@ -182,9 +199,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <main className="min-w-0 flex-1 overflow-auto">
+      <main className="min-w-0 flex-1 overflow-x-hidden">
         <div className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur-md">
-          <div className="mx-auto flex h-[60px] max-w-[1400px] items-center justify-between gap-4 px-4 md:px-7">
+          <div className="mx-auto flex min-h-[60px] max-w-[1400px] flex-wrap items-center gap-3 px-3 py-2 sm:px-4 md:h-[60px] md:flex-nowrap md:gap-4 md:px-7 md:py-0">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobile(true)}
@@ -200,7 +217,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </div>
 
-            <div className="relative flex-1 max-w-md" ref={searchRef}>
+            <div className="relative order-3 w-full max-w-none md:order-none md:flex-1 md:max-w-md" ref={searchRef}>
               <div className="flex items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-2 text-sm">
                 <Search size={15} className="shrink-0 text-muted" />
                 <input
@@ -288,8 +305,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button className="rounded-full p-2 text-muted hover:bg-line/40">
+            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                aria-label="Notifications"
+                className="rounded-full p-2 text-muted transition hover:bg-line/40"
+              >
                 <Bell size={17} />
               </button>
               <div className="relative ml-1 border-l border-line pl-3">
