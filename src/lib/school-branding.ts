@@ -1,5 +1,3 @@
-"use client";
-
 import { browserClient } from "@/lib/supabase/client";
 
 export const SCHOOL_ASSET_BUCKET = "school-assets";
