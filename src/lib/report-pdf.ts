@@ -283,7 +283,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const col = index % 2;
     const row = Math.floor(index / 2);
     text(label, rightX + 5 + col * (half / 2 - 2), y + 16 + row * 8, 5.3, "normal", MUTED);
-    text(value || "—", rightX + 5 + col * (half / 2 - 2), y + 20 + row * 8, 6.4, "bold", NAVY);
+    text(value ?? "—", rightX + 5 + col * (half / 2 - 2), y + 20 + row * 8, 6.4, "bold", NAVY);
   });
   y += attendanceHeight + 7;
 
