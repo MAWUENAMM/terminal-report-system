@@ -4,11 +4,11 @@ import { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
 import { getPerformanceRemark } from "@/lib/grading";
 
-const NAVY = [16, 32, 51] as const;
-const GREEN = [15, 90, 69] as const;
-const GOLD = [207, 164, 60] as const;
-const LINE = [218, 224, 228] as const;
-const MUTED = [103, 116, 128] as const;
+const NAVY: readonly [number, number, number] = [16, 32, 51];
+const GREEN: readonly [number, number, number] = [15, 90, 69];
+const GOLD: readonly [number, number, number] = [207, 164, 60];
+const LINE: readonly [number, number, number] = [218, 224, 228];
+const MUTED: readonly [number, number, number] = [103, 116, 128];
 
 export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
