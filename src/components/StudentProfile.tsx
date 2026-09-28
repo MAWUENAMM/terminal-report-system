@@ -213,7 +213,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                   ["results", "Academic results", BookOpen],
                   ["development", "Attendance & development", HeartPulse],
                   ["history", "Report history", FileText],
-                ].map(([key, label, Icon]) => (
+                ] as const).map(([key, label, Icon]) => (
                   <button
                     key={key as string}
                     onClick={() => setSection(key as typeof section)}
@@ -235,7 +235,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                       ["Position", snapshot.overallPosition ? `${snapshot.overallPosition} / ${snapshot.totalStudents}` : "—", GraduationCap],
                       ["Subjects", String(snapshot.scores.length), BookOpen],
                       ["Attendance", snapshot.attendance?.total_days ? `${snapshot.attendance.days_present}/${snapshot.attendance.total_days}` : "—", CalendarDays],
-                    ].map(([label, value, Icon]) => (
+                    ] as const).map(([label, value, Icon]) => (
                       <div key={label as string} className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label as string}</span>
