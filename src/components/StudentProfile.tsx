@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Award,
   BookOpen,
@@ -92,7 +92,7 @@ export default function StudentProfile({ student, onClose }: Props) {
     setEditing(true);
   }
 
-  async function saveNotes(e: React.FormEvent<HTMLFormElement>) {
+  async function saveNotes(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const payload: Record<string, string | number> = {};
     if (ownClass)
@@ -144,7 +144,7 @@ export default function StudentProfile({ student, onClose }: Props) {
       <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white">
         {logoUrl && (
           <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center opacity-[0.035]">
-            <img src={logoUrl} alt="" className="h-[62%] w-[62%] object-contain grayscale" />
+            <Image src={logoUrl} alt="" width={700} height={700} unoptimized className="h-[62%] w-[62%] object-contain grayscale" />
           </div>
         )}
 

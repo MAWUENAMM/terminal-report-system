@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Field, Restricted } from "@/components/ui";
 import { updateRow } from "@/lib/api";
