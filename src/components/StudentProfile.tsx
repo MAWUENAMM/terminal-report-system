@@ -20,7 +20,7 @@ import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
 import { currentSnapshot, downloadReport } from "@/lib/reporting";
 import { fullName, isLeader, type Student } from "@/lib/models";
-import { getPerformanceRemark } from "@/lib/grading";
+import { computePositions, getPerformanceRemark } from "@/lib/grading";
 import { resolveSchoolLogoUrl } from "@/lib/school-branding";
 
 type Props = {
@@ -138,6 +138,23 @@ export default function StudentProfile({ student, onClose }: Props) {
   const average = snapshot.scores.length
     ? snapshot.scores.reduce((sum, s) => sum + Number(s.total), 0) / snapshot.scores.length
     : 0;
+  const subjectPositions = useMemo(() => {
+    const positions = new Map<string, number>();
+    for (const subject of w.subjects) {
+      const rows = w.scores.filter(
+        (s) =>
+          s.class_id === student.class_id &&
+          s.subject_id === subject.id &&
+          s.academic_year === w.school.academic_year &&
+          s.term === w.school.current_term,
+      );
+      const rank = computePositions(
+        rows.map((s) => ({ studentId: s.student_id, total: Number(s.total) })),
+      ).get(student.id);
+      if (rank) positions.set(subject.id, rank);
+    }
+    return positions;
+  }, [student.class_id, student.id, w.school.academic_year, w.school.current_term, w.scores, w.subjects]);
 
   return (
     <Modal title={`Student profile · ${fullName(student)}`} onClose={onClose} size="wide">
@@ -313,6 +330,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                             <th className="px-4 py-3 text-center">Exam</th>
                             <th className="px-4 py-3 text-center">Total</th>
                             <th className="px-4 py-3 text-center">Grade</th>
+                            <th className="px-4 py-3 text-center">Pos.</th>
                             <th className="px-4 py-3">Remark</th>
                           </tr>
                         </thead>
@@ -328,13 +346,14 @@ export default function StudentProfile({ student, onClose }: Props) {
                                 <td className="px-4 py-3 text-center">{Number(score.exam_scaled).toFixed(1)}</td>
                                 <td className="px-4 py-3 text-center font-bold">{total.toFixed(1)}</td>
                                 <td className="px-4 py-3 text-center font-bold">{score.grade}</td>
+                                <td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td>
                                 <td className="px-4 py-3">
                                   <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span>
                                 </td>
                               </tr>
                             );
                           }) : (
-                            <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>
+                            <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>
                           )}
                         </tbody>
                       </table>
