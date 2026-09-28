@@ -70,7 +70,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     size = 9,
     weight: "normal" | "bold" = "normal",
     color = NAVY,
-    options?: Parameters<typeof doc.text>[3],
+    options?: any,
   ) => {
     doc.setFont("helvetica", weight);
     doc.setFontSize(size);
