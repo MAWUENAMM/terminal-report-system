@@ -247,7 +247,7 @@ export default function StudentProfile({ student, onClose }: Props) {
               {section === "overview" && (
                 <div className="space-y-6">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
+                    {([
                       ["Average", snapshot.scores.length ? `${average.toFixed(1)}%` : "—", Award],
                       ["Position", snapshot.overallPosition ? `${snapshot.overallPosition} / ${snapshot.totalStudents}` : "—", GraduationCap],
                       ["Subjects", String(snapshot.scores.length), BookOpen],
