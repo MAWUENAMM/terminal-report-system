@@ -273,7 +273,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const rightX = margin + half + 5;
   outlineRect(rightX, y, half, attendanceHeight);
   text("LEARNER DEVELOPMENT", rightX + 5, y + 8, 7, "bold", GREEN);
-  const dev = [
+  const dev: Array<[string, string | undefined]> = [
     ["Conduct", affective?.conduct],
     ["Interest", affective?.interest],
     ["Attitude", affective?.attitude],
