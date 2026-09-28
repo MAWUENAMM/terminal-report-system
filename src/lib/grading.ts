@@ -1,5 +1,18 @@
 import { GradeBoundary, Score } from "@/types";
 
+export function getPerformanceRemark(score: number): string {
+  if (!Number.isFinite(score)) return "LOWEST";
+  if (score >= 80) return "HIGHEST";
+  if (score >= 70) return "HIGHER";
+  if (score >= 65) return "HIGH";
+  if (score >= 60) return "HIGH AVERAGE";
+  if (score >= 55) return "AVERAGE";
+  if (score >= 50) return "LOW AVERAGE";
+  if (score >= 45) return "LOW";
+  if (score >= 35) return "LOWER";
+  return "LOWEST";
+}
+
 export const DEFAULT_GRADING_SCALE: GradeBoundary[] = [
   {
     grade: "A",

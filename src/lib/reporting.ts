@@ -1,6 +1,6 @@
 import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
-import { computePositions, getGrade, DEFAULT_GRADING_SCALE } from "./grading";
+import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
 export function currentSnapshot(
   w: Workspace,
   student: Student,
@@ -86,6 +86,7 @@ export function reportData(snapshot: ReportSnapshot): {
         headteacherName: sch.headteacher_name,
         district: sch.district,
         region: sch.region,
+        logoUrl: sch.logo_url || undefined,
         academicYear: sch.academic_year,
         currentTerm: sch.current_term as 1 | 2 | 3,
         sbaWeight: Number(sch.sba_weight),
@@ -115,7 +116,7 @@ export function reportData(snapshot: ReportSnapshot): {
         examScaled: Number(sc.exam_scaled),
         total: Number(sc.total),
         grade: sc.grade,
-        subjectRemark: sc.subject_remark,
+        subjectRemark: sc.subject_remark || getPerformanceRemark(Number(sc.total)),
         position: computePositions(
           x.class_scores
             .filter((other) => other.subject_id === sc.subject_id)
@@ -170,6 +171,20 @@ export async function downloadReport(
 ) {
   const { generateReportPDF } = await import("./report-pdf");
   const { data, subjects } = reportData(snapshot);
+  const { resolveSchoolLogoUrl, imageUrlToPngDataUrl } = await import("./school-branding");
+  const logoUrl = await resolveSchoolLogoUrl(snapshot.school.logo_url);
+  if (logoUrl) data.school.logoUrl = await imageUrlToPngDataUrl(logoUrl);
+  if (snapshot.student.photo_url) {
+    try {
+      const photoUrl = snapshot.student.photo_url;
+      const resolvedPhoto = photoUrl.startsWith("http")
+        ? photoUrl
+        : await resolveSchoolLogoUrl(photoUrl);
+      if (resolvedPhoto) data.student.photoUrl = await imageUrlToPngDataUrl(resolvedPhoto);
+    } catch {
+      /* Keep the report usable when an older/external photo cannot be fetched. */
+    }
+  }
   generateReportPDF(data, subjects).save(
     `${snapshot.student.admission_number.replace(/[^a-z0-9_-]/gi, "_")}_${snapshot.school.academic_year.replace("/", "-")}_Term${snapshot.school.current_term}${revision ? `_Archive_v${revision}` : ""}.pdf`,
   );

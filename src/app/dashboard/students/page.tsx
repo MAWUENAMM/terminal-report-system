@@ -5,6 +5,7 @@ import { PageHeader, Field, Modal, Empty } from "@/components/ui";
 import { saveRows, deleteRow, updateRow } from "@/lib/api";
 import { fullName, isLeader, type Student } from "@/lib/models";
 import { readStudentImport, type ImportedStudent } from "@/lib/student-import";
+import StudentProfile from "@/components/StudentProfile";
 export default function Students() {
   const { data: w, run, busy } = useWorkspace(),
     [query, setQuery] = useState(""),
@@ -13,7 +14,8 @@ export default function Students() {
     [importOpen, setImportOpen] = useState(false),
     [preview, setPreview] = useState<ImportedStudent[]>([]),
     [errors, setErrors] = useState<string[]>([]),
-    [reading, setReading] = useState(false);
+    [reading, setReading] = useState(false),
+    [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const canManage = isLeader(w.profile.role),
     visible = w.students.filter(
       (s) =>
@@ -108,7 +110,7 @@ export default function Students() {
                 <th>Class</th>
                 <th>Gender</th>
                 <th>Status</th>
-                {canManage && <th>Actions</th>}
+                {canManage ? <th>Actions</th> : <th>Profile</th>}
               </tr>
             </thead>
             <tbody>
@@ -116,12 +118,19 @@ export default function Students() {
                 const protectedRecords = recordedLearners.has(s.id);
                 return (
                   <tr key={s.id}>
-                    <td className="font-medium">{fullName(s)}</td>
+                    <td className="font-medium">
+                      <button
+                        className="text-left font-semibold text-[var(--g-green)] underline-offset-4 hover:underline"
+                        onClick={() => setSelectedStudent(s)}
+                      >
+                        {fullName(s)}
+                      </button>
+                    </td>
                     <td>{s.admission_number}</td>
                     <td>{w.classes.find((c) => c.id === s.class_id)?.name}</td>
                     <td>{s.gender}</td>
                     <td>{s.status.toLowerCase()}</td>
-                    {canManage && (
+                    {canManage ? (
                       <td>
                         <div className="flex flex-wrap gap-4">
                           <button
@@ -180,6 +189,15 @@ export default function Students() {
                           </p>
                         )}
                       </td>
+                    ) : (
+                      <td>
+                        <button
+                          className="font-semibold text-[var(--g-green)]"
+                          onClick={() => setSelectedStudent(s)}
+                        >
+                          View profile
+                        </button>
+                      </td>
                     )}
                   </tr>
                 );
@@ -194,6 +212,12 @@ export default function Students() {
             ? "Add classes first, then register or import learners."
             : ""}
         </Empty>
+      )}
+      {selectedStudent && (
+        <StudentProfile
+          student={selectedStudent}
+          onClose={() => setSelectedStudent(null)}
+        />
       )}
       {draft && (
         <Modal

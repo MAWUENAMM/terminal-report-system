@@ -58,10 +58,12 @@ export function Modal({
   title,
   children,
   onClose,
+  size = "default",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  size?: "default" | "wide";
 }) {
   const closeRef = useRef(onClose);
   useEffect(() => {
@@ -105,7 +107,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className={`max-h-[92dvh] w-full ${size === "wide" ? "max-w-6xl" : "max-w-2xl"} overflow-y-auto rounded-2xl bg-white shadow-2xl`}
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-white p-5">
           <h2 className="text-lg font-semibold">{title}</h2>

@@ -25,6 +25,7 @@ export interface School {
   deleted_at: string | null;
   status_reason: string;
   status_changed_at: string;
+  logo_url?: string | null;
   address?: string;
   phone?: string;
   email?: string;
