@@ -335,7 +335,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-slate-400">Overall grade</p>
-                        <p className="text-2xl font-black text-slate-900">{snapshot.scores.length ? overallGrade}</p>
+                        <p className="text-2xl font-black text-slate-900">{snapshot.scores.length ? overallGrade : "—"}</p>
                       </div>
                     </div>
                     <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
