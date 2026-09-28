@@ -20,7 +20,7 @@ import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
 import { currentSnapshot, downloadReport } from "@/lib/reporting";
 import { fullName, isLeader, type Student } from "@/lib/models";
-import { computePositions, getPerformanceRemark } from "@/lib/grading";
+import { computePositions, getGrade, getPerformanceRemark } from "@/lib/grading";
 import { resolveSchoolLogoUrl } from "@/lib/school-branding";
 
 type Props = {
@@ -138,6 +138,23 @@ export default function StudentProfile({ student, onClose }: Props) {
   const average = snapshot.scores.length
     ? snapshot.scores.reduce((sum, s) => sum + Number(s.total), 0) / snapshot.scores.length
     : 0;
+  const classAverages = useMemo(() => {
+    return snapshot.class_students.map((classStudent) => {
+      const scores = snapshot.class_scores.filter((score) => score.student_id === classStudent.id);
+      return {
+        studentId: classStudent.id,
+        total: scores.length
+          ? scores.reduce((sum, score) => sum + Number(score.total), 0) / scores.length
+          : 0,
+      };
+    });
+  }, [snapshot.class_scores, snapshot.class_students]);
+  const overallPosition = useMemo(
+    () => computePositions(classAverages).get(student.id),
+    [classAverages, student.id],
+  );
+  const totalStudents = snapshot.class_students.length;
+  const overallGrade = snapshot.scores.length ? getGrade(average).grade : "—";
   const subjectPositions = useMemo(() => {
     const positions = new Map<string, number>();
     for (const subject of w.subjects) {
@@ -249,7 +266,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {([
                       ["Average", snapshot.scores.length ? `${average.toFixed(1)}%` : "—", Award],
-                      ["Position", snapshot.overallPosition ? `${snapshot.overallPosition} / ${snapshot.totalStudents}` : "—", GraduationCap],
+                      ["Position", overallPosition ? `${overallPosition} / ${totalStudents}` : "—", GraduationCap],
                       ["Subjects", String(snapshot.scores.length), BookOpen],
                       ["Attendance", snapshot.attendance?.total_days ? `${snapshot.attendance.days_present}/${snapshot.attendance.total_days}` : "—", CalendarDays],
                     ] as const).map(([label, value, Icon]) => (
@@ -318,7 +335,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-slate-400">Overall grade</p>
-                        <p className="text-2xl font-black text-slate-900">{snapshot.scores.length ? snapshot.overallGrade : "—"}</p>
+                        <p className="text-2xl font-black text-slate-900">{snapshot.scores.length ? overallGrade}</p>
                       </div>
                     </div>
                     <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
@@ -364,7 +381,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                     {[
                       ["Total score", snapshot.scores.reduce((n, s) => n + Number(s.total), 0).toFixed(1)],
                       ["Average", snapshot.scores.length ? `${average.toFixed(1)}%` : "—"],
-                      ["Class position", snapshot.overallPosition ? `${snapshot.overallPosition} of ${snapshot.totalStudents}` : "—"],
+                      ["Class position", overallPosition ? `${overallPosition} of ${totalStudents}` : "—"],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                         <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
