@@ -2,8 +2,10 @@ import { browserClient } from "@/lib/supabase/client";
 
 export const SCHOOL_ASSET_BUCKET = "school-assets";
 export const schoolLogoPath = (schoolId: string) => `schools/${schoolId}/logo`;
+export const studentPhotoPath = (schoolId: string, studentId: string) =>
+  `schools/${schoolId}/students/${studentId}/photo`;
 
-export async function resolveSchoolLogoUrl(
+export async function resolveSchoolAssetUrl(
   storedPath: string | null | undefined,
   expiresIn = 3600,
 ): Promise<string | null> {
@@ -15,6 +17,13 @@ export async function resolveSchoolLogoUrl(
     .createSignedUrl(storedPath, expiresIn);
   if (error || !data?.signedUrl) return null;
   return data.signedUrl;
+}
+
+export async function resolveSchoolLogoUrl(
+  storedPath: string | null | undefined,
+  expiresIn = 3600,
+): Promise<string | null> {
+  return resolveSchoolAssetUrl(storedPath, expiresIn);
 }
 
 export async function uploadSchoolLogo(schoolId: string, file: File) {
@@ -45,7 +54,78 @@ export async function uploadSchoolLogo(schoolId: string, file: File) {
     .single();
   if (updateError) throw new Error(updateError.message);
 
-  return resolveSchoolLogoUrl(path, 3600);
+  return resolveSchoolAssetUrl(path, 3600);
+}
+
+export async function removeSchoolLogo(schoolId: string) {
+  const path = schoolLogoPath(schoolId);
+  const { error: removeError } = await browserClient()
+    .storage
+    .from(SCHOOL_ASSET_BUCKET)
+    .remove([path]);
+  if (removeError) throw new Error(removeError.message);
+
+  const { error: updateError } = await browserClient()
+    .from("schools")
+    .update({ logo_url: null })
+    .eq("id", schoolId)
+    .select("id")
+    .single();
+  if (updateError) throw new Error(updateError.message);
+}
+
+export async function uploadStudentPhoto(
+  schoolId: string,
+  studentId: string,
+  file: File,
+) {
+  const allowed = new Set(["image/png", "image/jpeg", "image/webp"]);
+  if (!allowed.has(file.type)) {
+    throw new Error("Use a PNG, JPG or WEBP learner photo.");
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error("Learner photos must be 2 MB or smaller.");
+  }
+
+  const path = studentPhotoPath(schoolId, studentId);
+  const { error } = await browserClient()
+    .storage
+    .from(SCHOOL_ASSET_BUCKET)
+    .upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: true,
+    });
+  if (error) throw new Error(error.message);
+
+  const { error: updateError } = await browserClient()
+    .from("students")
+    .update({ photo_url: path })
+    .eq("id", studentId)
+    .eq("school_id", schoolId)
+    .select("id")
+    .single();
+  if (updateError) throw new Error(updateError.message);
+
+  return resolveSchoolAssetUrl(path, 3600);
+}
+
+export async function removeStudentPhoto(schoolId: string, studentId: string) {
+  const path = studentPhotoPath(schoolId, studentId);
+  const { error: removeError } = await browserClient()
+    .storage
+    .from(SCHOOL_ASSET_BUCKET)
+    .remove([path]);
+  if (removeError) throw new Error(removeError.message);
+
+  const { error: updateError } = await browserClient()
+    .from("students")
+    .update({ photo_url: null })
+    .eq("id", studentId)
+    .eq("school_id", schoolId)
+    .select("id")
+    .single();
+  if (updateError) throw new Error(updateError.message);
 }
 
 export async function imageUrlToPngDataUrl(url: string): Promise<string> {
