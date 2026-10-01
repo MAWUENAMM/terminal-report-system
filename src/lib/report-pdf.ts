@@ -1,4 +1,4 @@
-import { jsPDF } from "jspdf";
+import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
@@ -111,11 +111,16 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const addWatermark = () => {
     if (!school.logoUrl?.startsWith("data:image")) return;
     try {
-      doc.setGState({ opacity: 0.035 });
+      doc.saveGraphicsState();
+      doc.setGState(new GState({ opacity: 0.035 }));
       doc.addImage(school.logoUrl, "PNG", pageWidth / 2 - 48, 92, 96, 96);
-      doc.setGState({ opacity: 1 });
+      doc.restoreGraphicsState();
     } catch {
-      doc.setGState({ opacity: 1 });
+      try {
+        doc.restoreGraphicsState();
+      } catch {
+        /* graphics state was not pushed */
+      }
     }
   };
 
