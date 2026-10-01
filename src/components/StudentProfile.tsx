@@ -227,56 +227,65 @@ export default function StudentProfile({ student, onClose }: Props) {
     <Modal title={`Student profile · ${fullName(currentStudent)}`} onClose={onClose} size="wide">
       <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white">
         {logoUrl && (
-          <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center opacity-[0.035]">
-            <Image src={logoUrl} alt="" width={700} height={700} unoptimized className="h-[62%] w-[62%] object-contain grayscale" />
+          <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center opacity-[0.045]">
+            <Image src={logoUrl} alt="" width={760} height={760} unoptimized className="h-[70%] w-[70%] object-contain grayscale" />
           </div>
         )}
 
         <div className="relative z-10">
-          <header className="bg-[linear-gradient(135deg,#102033_0%,#173d3a_55%,#0f5a45_100%)] px-5 py-6 text-white sm:px-8">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/25 bg-white/10 p-2">
+          <header className="relative overflow-hidden border-b border-slate-200 bg-white px-5 py-6 sm:px-8">
+            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#ce1126_0_33%,#fcd116_33%_66%,#006b3f_66%_100%)]" />
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-emerald-100 bg-emerald-50 p-2.5 shadow-sm">
                   {logoUrl ? (
-                    <Image src={logoUrl} alt={w.school.name} width={64} height={64} unoptimized className="h-full w-full object-contain" />
+                    <Image src={logoUrl} alt={w.school.name} width={80} height={80} unoptimized className="h-full w-full object-contain" />
                   ) : (
-                    <GraduationCap className="h-8 w-8 text-white/80" />
+                    <GraduationCap className="h-9 w-9 text-emerald-700" />
                   )}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Learner profile</p>
-                  <h2 className="mt-1 truncate text-xl font-bold sm:text-2xl">{w.school.name}</h2>
-                  <p className="mt-1 text-sm text-white/75">
-                    {w.school.district || w.school.region || "School workspace"} · {termLabel(w.school.current_term)} · {w.school.academic_year}
+                <div className="min-w-0 pt-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Learner academic profile</p>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      {termLabel(w.school.current_term)}
+                    </span>
+                  </div>
+                  <h2 className="mt-2 max-w-2xl break-words text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                    {w.school.name}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    {[w.school.address, w.school.district, w.school.region].filter(Boolean).join(" · ") || "School workspace"}
                   </p>
+                  <p className="text-xs font-semibold text-slate-400">{w.school.academic_year} academic year</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 xl:max-w-[440px] xl:justify-end">
                 {leader && (
-                  <button className="btn-secondary !border-white/20 !bg-white/10 !text-white hover:!bg-white/15" onClick={() => setPhotoEditing(true)}>
-                    <ImagePlus className="mr-2 inline h-4 w-4" /> Learner photo
+                  <button className="btn-secondary !py-2.5" onClick={() => setPhotoEditing(true)}>
+                    <ImagePlus className="h-4 w-4" /> Learner photo
                   </button>
                 )}
                 {canEditNotes && termOpen && (
-                  <button className="btn-secondary !border-white/20 !bg-white/10 !text-white hover:!bg-white/15" onClick={startEditing}>
-                    <PencilLine className="mr-2 inline h-4 w-4" /> Edit records
+                  <button className="btn-secondary !py-2.5" onClick={startEditing}>
+                    <PencilLine className="h-4 w-4" /> Edit records
                   </button>
                 )}
                 <button
-                  className="btn-primary !bg-white !text-slate-900"
+                  className="btn-primary !py-2.5"
                   disabled={!snapshot.scores.length || busy || downloading}
                   onClick={() => void handleDownload()}
                 >
-                  <Download className="mr-2 inline h-4 w-4" />
+                  <Download className="h-4 w-4" />
                   {downloading ? "Preparing…" : "Download report"}
                 </button>
               </div>
             </div>
           </header>
 
-          <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[220px_1fr]">
+          <div className="grid gap-6 bg-slate-50/70 p-5 sm:p-8 lg:grid-cols-[240px_minmax(0,1fr)]">
             <aside className="space-y-4">
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 p-3">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-white">
                   {photoUrl ? (
                     <img src={photoUrl} alt={fullName(currentStudent)} className="h-full w-full object-cover" />
@@ -287,6 +296,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                 <div className="mt-4">
                   <h3 className="font-bold text-slate-900">{fullName(currentStudent)}</h3>
                   <p className="mt-1 text-sm text-slate-500">{currentStudent.admission_number}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">{cls?.name || "Class not assigned"}</p>
                   <span className="mt-3 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{currentStudent.status}</span>
                 </div>
               </div>
@@ -299,7 +309,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                   ["development", "Attendance & development", HeartPulse],
                   ["history", "Report history", FileText],
                 ] as const).map(([key, label, Icon]) => (
-                  <button key={key} onClick={() => setSection(key)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === key ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50"}`}>
+                  <button key={key} onClick={() => setSection(key)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${section === key ? "bg-emerald-50 text-emerald-800" : "text-slate-600 hover:bg-slate-50"}`}>
                     <Icon className="h-4 w-4" /> {label}
                   </button>
                 ))}
@@ -313,12 +323,12 @@ export default function StudentProfile({ student, onClose }: Props) {
                     {([
                       ["Average", snapshot.scores.length ? `${average.toFixed(1)}%` : "—", Award],
                       ["Position", overallPosition ? `${overallPosition} / ${totalStudents}` : "—", GraduationCap],
-                      ["Subjects", String(snapshot.scores.length), BookOpen],
+                      ["Grade", overallGrade, BookOpen],
                       ["Attendance", snapshot.attendance?.total_days ? `${snapshot.attendance.days_present}/${snapshot.attendance.total_days}` : "—", CalendarDays],
                     ] as const).map(([label, value, Icon]) => (
-                      <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</span><Icon className="h-4 w-4 text-slate-400" /></div>
-                        <p className="mt-3 text-2xl font-bold text-slate-900">{value}</p>
+                      <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</span><span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-4 w-4" /></span></div>
+                        <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">{value}</p>
                       </div>
                     ))}
                   </div>
@@ -359,13 +369,13 @@ export default function StudentProfile({ student, onClose }: Props) {
                     <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Current term</p><h3 className="mt-1 text-lg font-bold">{termLabel(w.school.current_term)} results</h3></div><div className="text-right"><p className="text-xs text-slate-400">Overall grade</p><p className="text-2xl font-black text-slate-900">{overallGrade}</p></div></div>
                     <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
                       <table className="w-full min-w-[680px] text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Subject</th><th className="px-4 py-3 text-center">SBA</th><th className="px-4 py-3 text-center">Exam</th><th className="px-4 py-3 text-center">Total</th><th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th><th className="px-4 py-3">Remark</th></tr></thead>
+                        <thead className="bg-slate-900 text-left text-[10px] uppercase tracking-[0.12em] text-white"><tr><th className="px-4 py-3">Subject</th><th className="px-4 py-3 text-center">SBA {w.school.sba_weight}%</th><th className="px-4 py-3 text-center">Exam {w.school.exam_weight}%</th><th className="px-4 py-3 text-center">Total</th><th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th><th className="px-4 py-3">Remark</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {scoreRows.length ? scoreRows.map((score) => {
                             const subject = w.subjects.find((s) => s.id === score.subject_id);
                             const total = Number(score.total);
                             const remark = score.subject_remark || getPerformanceRemark(total);
-                            return <tr key={score.id}><td className="px-4 py-3 font-semibold text-slate-800">{subject?.name || "Subject"}</td><td className="px-4 py-3 text-center">{Number(score.sba_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center">{Number(score.exam_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center font-bold">{total.toFixed(1)}</td><td className="px-4 py-3 text-center font-bold">{score.grade}</td><td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span></td></tr>;
+                            return <tr key={score.id}><td className="px-4 py-3 font-semibold text-slate-800">{subject?.name || "Subject"}</td><td className="px-4 py-3 text-center">{Number(score.sba_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center">{Number(score.exam_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center font-black text-red-600">{total.toFixed(1)}</td><td className="px-4 py-3 text-center font-bold">{score.grade}</td><td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span></td></tr>;
                           }) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>}
                         </tbody>
                       </table>
