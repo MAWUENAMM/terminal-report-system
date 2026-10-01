@@ -98,7 +98,7 @@ export default function HomePage() {
             className="object-cover object-center"
           />
         </div>
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(3,20,14,.96)_0%,rgba(3,20,14,.9)_42%,rgba(3,20,14,.68)_68%,rgba(3,20,14,.5)_100%)]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(3,20,14,.84)_0%,rgba(3,20,14,.70)_42%,rgba(3,20,14,.42)_68%,rgba(3,20,14,.20)_100%)]" />
 
         <header className="border-b border-white/10">
           <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
