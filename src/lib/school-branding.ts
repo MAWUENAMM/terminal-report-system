@@ -52,19 +52,16 @@ export async function uploadSchoolLogo(schoolId: string, file: File) {
     .eq("id", schoolId)
     .select("id")
     .single();
-  if (updateError) throw new Error(updateError.message);
+  if (updateError) {
+    await browserClient().storage.from(SCHOOL_ASSET_BUCKET).remove([path]);
+    throw new Error(updateError.message);
+  }
 
   return resolveSchoolAssetUrl(path, 3600);
 }
 
 export async function removeSchoolLogo(schoolId: string) {
   const path = schoolLogoPath(schoolId);
-  const { error: removeError } = await browserClient()
-    .storage
-    .from(SCHOOL_ASSET_BUCKET)
-    .remove([path]);
-  if (removeError) throw new Error(removeError.message);
-
   const { error: updateError } = await browserClient()
     .from("schools")
     .update({ logo_url: null })
@@ -72,6 +69,18 @@ export async function removeSchoolLogo(schoolId: string) {
     .select("id")
     .single();
   if (updateError) throw new Error(updateError.message);
+
+  const { error: removeError } = await browserClient()
+    .storage
+    .from(SCHOOL_ASSET_BUCKET)
+    .remove([path]);
+  if (removeError) {
+    await browserClient()
+      .from("schools")
+      .update({ logo_url: path })
+      .eq("id", schoolId);
+    throw new Error(removeError.message);
+  }
 }
 
 export async function uploadStudentPhoto(
@@ -105,19 +114,16 @@ export async function uploadStudentPhoto(
     .eq("school_id", schoolId)
     .select("id")
     .single();
-  if (updateError) throw new Error(updateError.message);
+  if (updateError) {
+    await browserClient().storage.from(SCHOOL_ASSET_BUCKET).remove([path]);
+    throw new Error(updateError.message);
+  }
 
   return resolveSchoolAssetUrl(path, 3600);
 }
 
 export async function removeStudentPhoto(schoolId: string, studentId: string) {
   const path = studentPhotoPath(schoolId, studentId);
-  const { error: removeError } = await browserClient()
-    .storage
-    .from(SCHOOL_ASSET_BUCKET)
-    .remove([path]);
-  if (removeError) throw new Error(removeError.message);
-
   const { error: updateError } = await browserClient()
     .from("students")
     .update({ photo_url: null })
@@ -126,6 +132,19 @@ export async function removeStudentPhoto(schoolId: string, studentId: string) {
     .select("id")
     .single();
   if (updateError) throw new Error(updateError.message);
+
+  const { error: removeError } = await browserClient()
+    .storage
+    .from(SCHOOL_ASSET_BUCKET)
+    .remove([path]);
+  if (removeError) {
+    await browserClient()
+      .from("students")
+      .update({ photo_url: path })
+      .eq("id", studentId)
+      .eq("school_id", schoolId);
+    throw new Error(removeError.message);
+  }
 }
 
 export async function imageUrlToPngDataUrl(url: string): Promise<string> {
