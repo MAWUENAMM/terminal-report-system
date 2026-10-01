@@ -18,9 +18,10 @@ export default function Settings() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    setSchool(w.school);
+    if (!dirty) setSchool(w.school);
     let active = true;
     void resolveSchoolLogoUrl(w.school.logo_url).then((url) => {
       if (active) setLogoUrl(url);
@@ -28,7 +29,7 @@ export default function Settings() {
     return () => {
       active = false;
     };
-  }, [w.school]);
+  }, [w.school, dirty]);
 
   useEffect(() => {
     if (!logoFile) {
@@ -82,7 +83,7 @@ export default function Settings() {
           className="space-y-5"
           onSubmit={async (e) => {
             e.preventDefault();
-            await run(async () => {
+            const ok = await run(async () => {
               if (Number(school.sba_weight) + Number(school.exam_weight) !== 100)
                 throw new Error("SBA and exam weights must add up to 100%.");
               const {
@@ -108,6 +109,7 @@ export default function Settings() {
                 exam_weight,
               });
             }, "School settings saved.");
+            if (ok) setDirty(false);
           }}
         >
           <section className="surface grid gap-5 rounded-2xl p-6 sm:grid-cols-2">
@@ -129,7 +131,10 @@ export default function Settings() {
                   type={key === "email" ? "email" : "text"}
                   maxLength={150}
                   value={school[key] || ""}
-                  onChange={(e) => setSchool({ ...school, [key]: e.target.value })}
+                  onChange={(e) => {
+                    setDirty(true);
+                    setSchool({ ...school, [key]: e.target.value });
+                  }}
                 />
               </Field>
             ))}
@@ -157,13 +162,14 @@ export default function Settings() {
                   required
                   disabled={locked}
                   value={school.sba_weight}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setDirty(true);
                     setSchool({
                       ...school,
                       sba_weight: Number(e.target.value),
                       exam_weight: 100 - Number(e.target.value),
-                    })
-                  }
+                    });
+                  }}
                 />
               </Field>
               <Field label="Exam %">
@@ -175,13 +181,14 @@ export default function Settings() {
                   required
                   disabled={locked}
                   value={school.exam_weight}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setDirty(true);
                     setSchool({
                       ...school,
                       exam_weight: Number(e.target.value),
                       sba_weight: 100 - Number(e.target.value),
-                    })
-                  }
+                    });
+                  }}
                 />
               </Field>
             </div>
@@ -194,9 +201,16 @@ export default function Settings() {
               <Link href="/dashboard/terms" className="text-sm font-semibold text-[var(--g-green)]">
                 Manage academic terms →
               </Link>
-              <button disabled={busy} className="btn-primary">
-                Save school settings
-              </button>
+              <div className="flex items-center gap-3">
+                {dirty ? (
+                  <span className="text-xs font-semibold text-amber-700">Unsaved changes</span>
+                ) : (
+                  <span className="text-xs text-muted">All changes saved</span>
+                )}
+                <button disabled={busy || !dirty} className="btn-primary">
+                  Save school settings
+                </button>
+              </div>
             </div>
           </section>
         </form>
