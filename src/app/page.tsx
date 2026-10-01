@@ -366,7 +366,7 @@ export default function HomePage() {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold">{String(title)}</h4>
-                      <p className="mt-1 text-sm leading-6 text-white/65">{String(body)}</p>
+                      <p className="mt-1 text-sm leading-6 text-white/70">{String(body)}</p>
                     </div>
                   </div>
                 );
