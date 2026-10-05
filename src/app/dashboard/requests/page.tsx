@@ -122,9 +122,9 @@ export default function Requests() {
         </button>
         {history.length > 0 && (
           <button
-            className="btn-secondary !border-red-200 !text-red-700 hover:!bg-red-50"
-            onClick={() => void clearResolved()}
-            disabled={busy}
+            className="btn-secondary !border-red-200 !text-red-700 opacity-60"
+            disabled
+            title="Permanent clearing is waiting for the Supabase operator action to be deployed."
           >
             <Trash2 size={16} />
             Clear resolved ({history.length})
@@ -135,6 +135,12 @@ export default function Requests() {
       {error && (
         <p role="alert" className="text-red-700">
           {error}
+        </p>
+      )}
+      {history.length > 0 && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+          Clear controls are prepared but temporarily disabled until the secure
+          Platform Administrator cleanup action is deployed to Supabase.
         </p>
       )}
 
@@ -237,11 +243,10 @@ export default function Requests() {
                     </time>
                     {!pendingRequest && (
                       <button
-                        className="rounded-xl border border-red-100 p-2.5 text-red-600 transition hover:bg-red-50"
-                        title="Clear this completed request"
-                        aria-label="Clear this completed request"
-                        onClick={() => void clearRequest(request)}
-                        disabled={busy}
+                        className="rounded-xl border border-red-100 p-2.5 text-red-600 opacity-50"
+                        title="Permanent clearing is waiting for the Supabase operator action to be deployed."
+                        aria-label="Clear action pending backend deployment"
+                        disabled
                       >
                         <Trash2 size={16} />
                       </button>
