@@ -117,7 +117,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <Link
         href="/dashboard"
         onClick={() => setMobile(false)}
-        className="flex items-center gap-3 px-5 py-6"
+        className="flex items-center gap-3 px-5 pb-5 pt-6"
       >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[var(--g-green)]">
           <GraduationCap size={24} />
@@ -129,7 +129,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </span>
         </span>
       </Link>
-      <div className="mx-4 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
+      <div className="mx-4 rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-sm shadow-inner">
         <span className="block font-medium">{w.school.name}</span>
         <span className="mt-1 block text-xs text-white/60">
           {w.school.academic_year} · Term {w.school.current_term}
@@ -137,21 +137,21 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       </div>
       <nav
         aria-label="Workspace navigation"
-        className="flex-1 space-y-1 overflow-y-auto p-3"
+        className="flex-1 space-y-1 overflow-y-auto px-3 py-4"
       >
         {nav.map((n) => (
           <Link
             key={n.path}
             href={n.path}
             onClick={() => setMobile(false)}
-            className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm ${path === n.path ? "bg-[var(--g-gold)] font-semibold text-ink" : "text-white/75 hover:bg-white/10"}`}
+            className={`group flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-all duration-200 ${path === n.path ? "bg-white font-semibold text-emerald-950 shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
           >
             <n.icon size={17} />
             {n.label}
           </Link>
         ))}
       </nav>
-      <div className="border-t border-white/15 p-4">
+      <div className="border-t border-white/10 p-4">
         <div className="text-sm font-semibold">{w.profile.full_name}</div>
         <div className="mt-1 text-xs text-white/60">
           {w.operator ? "Platform Administrator" : roleNames[w.profile.role]}
@@ -170,8 +170,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     </>
   );
   return (
-    <div className="flex min-h-screen bg-paper">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-[var(--g-green)] text-white lg:flex">
+    <div className="flex min-h-screen bg-[#f4f7f4]">
+      <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 flex-col bg-[linear-gradient(180deg,#0a382b_0%,#07523b_55%,#063c2e_100%)] text-white shadow-[18px_0_50px_rgba(5,45,32,0.08)] lg:flex">
         {navigation}
       </aside>
       {mobile && (
@@ -181,7 +181,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             className="absolute inset-0"
             onClick={() => setMobile(false)}
           />
-          <aside className="relative flex h-full w-[min(86vw,320px)] flex-col bg-[var(--g-green)] text-white">
+          <aside className="relative flex h-full w-[min(86vw,320px)] flex-col bg-[linear-gradient(180deg,#0a382b_0%,#07523b_55%,#063c2e_100%)] text-white">
             <button
               className="absolute right-2 top-2 p-3"
               onClick={() => setMobile(false)}
@@ -194,7 +194,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-white/95 px-4 backdrop-blur md:px-7">
+        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 shadow-[0_1px_14px_rgba(15,23,42,0.04)] backdrop-blur-xl md:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <button
               className="rounded-lg p-2 lg:hidden"
@@ -209,7 +209,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <button
-              className="rounded-lg p-2 text-muted hover:bg-paper"
+              className="rounded-xl border border-transparent p-2.5 text-muted transition hover:border-slate-200 hover:bg-slate-50"
               title="Refresh school data"
               aria-label="Refresh school data"
               onClick={() => void run(refresh, "School data refreshed.")}
@@ -218,9 +218,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             </button>
             <Link
               href="/dashboard/profile"
-              className="flex items-center gap-2 text-sm"
+              className="flex items-center gap-2.5 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-sm shadow-sm transition hover:border-emerald-200"
             >
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--g-green)] text-xs font-semibold text-white">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--g-green)] text-xs font-bold text-white shadow-sm">
                 {w.profile.full_name
                   .split(" ")
                   .map((n) => n[0])
@@ -231,7 +231,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </header>
-        <main className="mx-auto max-w-[1400px] space-y-7 p-4 pb-28 md:p-7 md:pb-28">
+        <main className="mx-auto max-w-[1500px] space-y-7 p-4 pb-28 sm:p-5 md:p-7 md:pb-28 xl:p-8">
           {schoolActive || (w.operator && platformPage) ? (
             children
           ) : (
