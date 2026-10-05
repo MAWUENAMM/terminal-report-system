@@ -238,3 +238,44 @@ textarea:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+@keyframes dashboardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dashboardBar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.dashboard-reveal {
+  opacity: 0;
+  animation: dashboardReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.dashboard-bar {
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: dashboardBar 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-reveal,
+  .dashboard-bar {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
