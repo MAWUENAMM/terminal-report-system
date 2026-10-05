@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   GraduationCap,
   LayoutDashboard,
@@ -19,14 +19,59 @@ import {
   Inbox,
   School,
   Building2,
+  Bell,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { useWorkspace } from "@/components/workspace";
 import { isLeader, roleNames } from "@/lib/models";
 import { browserClient } from "@/lib/supabase/client";
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { data: w, refresh, run } = useWorkspace(),
-    [mobile, setMobile] = useState(false);
+    [mobile, setMobile] = useState(false),
+    [notificationsOpen, setNotificationsOpen] = useState(false),
+    [pendingRequests, setPendingRequests] = useState<
+      Array<{
+        id: string;
+        kind: string;
+        school_name: string;
+        created_at: string;
+      }>
+    >([]);
   const path = usePathname();
+
+  useEffect(() => {
+    if (!w.operator) {
+      setPendingRequests([]);
+      return;
+    }
+
+    let active = true;
+
+    const loadPendingRequests = async () => {
+      const { data, error } = await browserClient()
+        .from("school_requests")
+        .select("id,kind,school_name,created_at")
+        .eq("status", "PENDING")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (active && !error) setPendingRequests(data || []);
+    };
+
+    void loadPendingRequests();
+    const refreshNotifications = () => {
+      if (!document.hidden) void loadPendingRequests();
+    };
+    window.addEventListener("focus", refreshNotifications);
+    const timer = setInterval(refreshNotifications, 60000);
+
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshNotifications);
+      clearInterval(timer);
+    };
+  }, [w.operator]);
   const schoolActive = w.school.active && !w.school.deleted_at;
   const platformPage = [
     "/dashboard/schools",
@@ -36,6 +81,61 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const admin = w.profile.role === "ADMIN",
     ownClass = w.classes.some((c) => c.class_teacher_id === w.profile.id),
     leader = isLeader(w.profile.role);
+  const currentTerm = w.terms.find(
+    (term) =>
+      term.academic_year === w.school.academic_year &&
+      term.term === w.school.current_term,
+  );
+
+  const reportAttention =
+    leader || ownClass
+      ? w.students.filter((student) => {
+          if (student.status !== "ACTIVE") return false;
+
+          const hasScores = w.scores.some(
+            (score) =>
+              score.student_id === student.id &&
+              score.academic_year === w.school.academic_year &&
+              score.term === w.school.current_term,
+          );
+          const hasAttendance = w.attendance.some(
+            (record) =>
+              record.student_id === student.id &&
+              record.academic_year === w.school.academic_year &&
+              record.term === w.school.current_term,
+          );
+          const hasDevelopment = w.affective.some(
+            (record) =>
+              record.student_id === student.id &&
+              record.academic_year === w.school.academic_year &&
+              record.term === w.school.current_term,
+          );
+          const remark = w.remarks.find(
+            (record) =>
+              record.student_id === student.id &&
+              record.academic_year === w.school.academic_year &&
+              record.term === w.school.current_term,
+          );
+
+          return (
+            !hasScores ||
+            !hasAttendance ||
+            !hasDevelopment ||
+            !remark?.class_teacher_remark?.trim() ||
+            (leader && !remark?.headteacher_remark?.trim())
+          );
+        }).length
+      : 0;
+
+  const setupAttention =
+    admin && (!w.classes.length || !w.students.some((student) => student.status === "ACTIVE"));
+
+  const notificationCount =
+    pendingRequests.length +
+    (reportAttention > 0 ? 1 : 0) +
+    (currentTerm?.status === "CLOSED" ? 1 : 0) +
+    (setupAttention ? 1 : 0);
+
   const nav = [
     {
       path: "/dashboard/schools",
@@ -95,6 +195,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       label: "School requests",
       icon: Inbox,
       show: w.operator,
+      badge: pendingRequests.length,
     },
     {
       path: "/dashboard/profile",
@@ -147,7 +248,18 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             className={`group flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-all duration-200 ${path === n.path ? "bg-white font-semibold text-emerald-950 shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
           >
             <n.icon size={17} />
-            {n.label}
+            <span className="min-w-0 flex-1 truncate">{n.label}</span>
+            {"badge" in n && Number(n.badge) > 0 && (
+              <span
+                className={`grid min-w-5 place-items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  path === n.path
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-[var(--g-gold)] text-slate-950"
+                }`}
+              >
+                {Number(n.badge) > 99 ? "99+" : Number(n.badge)}
+              </span>
+            )}
           </Link>
         ))}
       </nav>
@@ -207,7 +319,160 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               {nav.find((n) => n.path === path)?.label || "School workspace"}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <button
+                className={`relative rounded-xl border p-2.5 transition ${
+                  notificationsOpen
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-transparent text-muted hover:border-slate-200 hover:bg-slate-50"
+                }`}
+                title="Notifications"
+                aria-label={`Notifications${notificationCount ? `, ${notificationCount} new or actionable` : ""}`}
+                aria-expanded={notificationsOpen}
+                onClick={() => setNotificationsOpen((open) => !open)}
+              >
+                <Bell size={18} />
+                {notificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(92vw,380px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                      <p className="text-sm font-bold text-slate-950">Notifications</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        Items that may need your attention
+                      </p>
+                    </div>
+                    {notificationCount === 0 && (
+                      <CheckCircle2 size={18} className="text-emerald-600" />
+                    )}
+                  </div>
+
+                  <div className="max-h-[430px] overflow-y-auto p-2">
+                    {w.operator &&
+                      pendingRequests.map((request) => (
+                        <Link
+                          key={request.id}
+                          href="/dashboard/requests"
+                          onClick={() => setNotificationsOpen(false)}
+                          className="flex gap-3 rounded-xl p-3 transition hover:bg-amber-50"
+                        >
+                          <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                            <Inbox size={16} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-slate-800">
+                              {request.kind === "ACCESS"
+                                ? "New school access request"
+                                : "New contact request"}
+                            </span>
+                            <span className="mt-1 block truncate text-xs text-slate-500">
+                              {request.school_name}
+                            </span>
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              {new Date(request.created_at).toLocaleDateString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                              })}
+                            </span>
+                          </span>
+                        </Link>
+                      ))}
+
+                    {reportAttention > 0 && (
+                      <Link
+                        href="/dashboard/reports"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="flex gap-3 rounded-xl p-3 transition hover:bg-red-50"
+                      >
+                        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700">
+                          <AlertTriangle size={16} />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">
+                            Reports need attention
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            {reportAttention} active learner
+                            {reportAttention === 1 ? "" : "s"} still have incomplete
+                            current-term report records.
+                          </span>
+                        </span>
+                      </Link>
+                    )}
+
+                    {currentTerm?.status === "CLOSED" && (
+                      <Link
+                        href="/dashboard/terms"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="flex gap-3 rounded-xl p-3 transition hover:bg-sky-50"
+                      >
+                        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-700">
+                          <CalendarDays size={16} />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">
+                            Current term is closed
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            Assessment changes are locked until the term is reopened.
+                          </span>
+                        </span>
+                      </Link>
+                    )}
+
+                    {setupAttention && (
+                      <Link
+                        href="/dashboard/classes"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
+                      >
+                        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                          <School size={16} />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">
+                            School setup needs attention
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            Add classes and active learners to complete the workspace setup.
+                          </span>
+                        </span>
+                      </Link>
+                    )}
+
+                    {notificationCount === 0 && (
+                      <div className="px-5 py-8 text-center">
+                        <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+                        <p className="mt-3 text-sm font-semibold text-slate-700">
+                          You’re all caught up
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          No current notifications require action.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {w.operator && (
+                    <Link
+                      href="/dashboard/requests"
+                      onClick={() => setNotificationsOpen(false)}
+                      className="block border-t border-slate-100 px-5 py-3 text-center text-xs font-bold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Open School Requests
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               className="rounded-xl border border-transparent p-2.5 text-muted transition hover:border-slate-200 hover:bg-slate-50"
               title="Refresh school data"
