@@ -18,8 +18,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   RefreshCw,
   Search,
   Settings,
@@ -39,7 +37,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const { data: w, refresh, run } = useWorkspace();
   const path = usePathname();
   const [mobile, setMobile] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [theme, setTheme] = useState<DashboardTheme>("light");
   const [navQuery, setNavQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -53,19 +51,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   >([]);
 
   useEffect(() => {
-    const savedSidebar = window.localStorage.getItem("edureport:sidebar");
     const savedTheme = window.localStorage.getItem("edureport:dashboard-theme");
-    if (savedSidebar === "collapsed") setCollapsed(true);
     if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      "edureport:sidebar",
-      collapsed ? "collapsed" : "expanded",
-    );
-    if (collapsed) setNavQuery("");
-  }, [collapsed]);
+    if (!sidebarExpanded) setNavQuery("");
+  }, [sidebarExpanded]);
 
   useEffect(() => {
     window.localStorage.setItem("edureport:dashboard-theme", theme);
@@ -329,17 +321,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </>
         )}
 
-        {compact && !mobileMenu && (
-          <button
-            className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-xl text-white/55 transition hover:bg-white/10 hover:text-white"
-            onClick={() => setCollapsed(false)}
-            title="Search navigation"
-            aria-label="Expand sidebar to search navigation"
-          >
-            <Search size={17} />
-          </button>
-        )}
-
         <nav
           aria-label="Workspace navigation"
           className={
@@ -467,19 +448,20 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     >
       <aside
         className={
-          "relative sticky top-0 hidden h-screen shrink-0 flex-col bg-[linear-gradient(180deg,#0a382b_0%,#07523b_55%,#063c2e_100%)] text-white shadow-[18px_0_50px_rgba(5,45,32,0.08)] transition-[width] duration-300 ease-out lg:flex " +
-          (collapsed ? "w-[84px]" : "w-[272px]")
+          "sticky top-0 hidden h-screen shrink-0 flex-col overflow-visible bg-[linear-gradient(180deg,#0a382b_0%,#07523b_55%,#063c2e_100%)] text-white shadow-[18px_0_50px_rgba(5,45,32,0.08)] transition-[width] duration-300 ease-out lg:flex " +
+          (sidebarExpanded ? "w-[272px]" : "w-[84px]")
         }
+        onMouseEnter={() => setSidebarExpanded(true)}
+        onMouseLeave={() => setSidebarExpanded(false)}
+        onFocusCapture={() => setSidebarExpanded(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setSidebarExpanded(false);
+          }
+        }}
+        aria-label="Dashboard sidebar"
       >
-        <button
-          className="absolute -right-3 top-24 z-20 grid h-7 w-7 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition hover:scale-105 hover:text-emerald-700"
-          onClick={() => setCollapsed((value) => !value)}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-        </button>
-        <SidebarNavigation compact={collapsed} />
+        <SidebarNavigation compact={!sidebarExpanded} />
       </aside>
 
       {mobile && (
@@ -562,7 +544,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               </button>
 
               {notificationsOpen && (
-                <div className="dashboard-popover absolute right-0 top-[calc(100%+10px)] z-50 w-[min(92vw,380px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+                <div className="dashboard-popover fixed left-4 right-4 top-[84px] z-50 max-h-[calc(100dvh-100px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:w-[min(92vw,380px)] sm:max-h-none">
                   <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                     <div>
                       <p className="text-sm font-bold text-slate-950">
@@ -577,7 +559,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                     )}
                   </div>
 
-                  <div className="max-h-[430px] overflow-y-auto p-2">
+                  <div className="max-h-[calc(100dvh-190px)] overflow-y-auto p-2 sm:max-h-[430px]">
                     {w.operator &&
                       pendingRequests.map((request) => (
                         <Link
