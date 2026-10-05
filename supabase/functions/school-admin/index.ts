@@ -190,7 +190,13 @@ Deno.serve(async (request) => {
       .maybeSingle();
     check(operatorError);
     if (
-      ["approve_request", "resolve_request", "create_school"].includes(action)
+      [
+        "approve_request",
+        "resolve_request",
+        "create_school",
+        "clear_request",
+        "clear_resolved_requests",
+      ].includes(action)
     ) {
       if (!operator)
         return reply({ error: "Platform administrator access required." }, 403);
@@ -234,6 +240,38 @@ Deno.serve(async (request) => {
             body.details,
           ),
         );
+      }
+      if (action === "clear_resolved_requests") {
+        const { data: cleared, error } = await service
+          .from("school_requests")
+          .delete()
+          .neq("status", "PENDING")
+          .select("id");
+        check(error);
+        return reply({ success: true, cleared: cleared?.length || 0 });
+      }
+      if (action === "clear_request") {
+        const requestId = value(body.request_id);
+        const { data: targetRequest, error: targetError } = await service
+          .from("school_requests")
+          .select("id,status")
+          .eq("id", requestId)
+          .single();
+        check(targetError);
+        if (targetRequest.status === "PENDING")
+          return reply(
+            { error: "Resolve or decline this request before clearing it." },
+            409,
+          );
+        const { data: cleared, error } = await service
+          .from("school_requests")
+          .delete()
+          .eq("id", requestId)
+          .neq("status", "PENDING")
+          .select("id")
+          .single();
+        check(error);
+        return reply({ success: !!cleared });
       }
       const { data: entry, error } = await service
         .from("school_requests")
