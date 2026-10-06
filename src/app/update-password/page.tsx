@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { serverClient } from "@/lib/supabase/server";
 import UpdatePasswordForm from "@/components/update-password-form";
 
-export default async function UpdatePasswordPage() {
+export default async function UpdatePasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const supabase = await serverClient();
   const {
     data: { user },
@@ -10,5 +14,6 @@ export default async function UpdatePasswordPage() {
 
   if (!user) redirect("/login?error=expired");
 
-  return <UpdatePasswordForm />;
+  const params = await searchParams;
+  return <UpdatePasswordForm errorCode={params.error} />;
 }
