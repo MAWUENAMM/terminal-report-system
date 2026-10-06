@@ -11,7 +11,11 @@ import {
   Shield,
 } from "lucide-react";
 
-export default function UpdatePasswordForm() {
+export default function UpdatePasswordForm({
+  errorCode,
+}: {
+  errorCode?: string;
+}) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pending, setPending] = useState(false);
@@ -129,6 +133,13 @@ export default function UpdatePasswordForm() {
               Your recovery session is temporary and will be signed out after
               the password is changed.
             </div>
+
+            {errorCode && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                The password could not be updated. Use at least 8 characters and
+                choose a stronger password, then try again.
+              </div>
+            )}
 
             <button
               type="submit"
