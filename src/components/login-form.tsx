@@ -4,7 +4,14 @@ import { useState } from "react";
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, ArrowRight, GraduationCap, Shield } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  GraduationCap,
+  Shield,
+} from "lucide-react";
 
 const HERO_IMG = "/hero-students.jpg";
 
@@ -20,9 +27,10 @@ export default function LoginForm({
     : errorCode === "inactive"
       ? "This account is inactive. Contact your school administrator."
       : errorCode === "expired"
-        ? "This password link is invalid or has expired. Contact your administrator."
+        ? "This password link is invalid or has expired. Request a new reset link and try again."
         : "Sign in failed. Check your email and password, or contact your school administrator.";
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <main className="min-h-[100svh] bg-paper">
@@ -129,22 +137,38 @@ export default function LoginForm({
                 required
               />
 
-              <label
-                htmlFor="password"
-                className="mb-1.5 mt-4 block text-sm font-medium"
-              >
-                Password
-              </label>
-              <input
-                className="field"
-                id="password"
-                name="password"
-                autoComplete="current-password"
-                type="password"
-                required
-                maxLength={128}
-                placeholder="Enter password"
-              />
+              <div className="mb-1.5 mt-4 flex items-center justify-between gap-3">
+                <label htmlFor="password" className="block text-sm font-medium">
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-semibold text-[var(--g-green)] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <input
+                  className="field pr-12"
+                  id="password"
+                  name="password"
+                  autoComplete="current-password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  maxLength={128}
+                  placeholder="Enter password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-muted transition hover:bg-slate-100 hover:text-ink"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
 
               {updated && (
                 <p className="mt-4 text-sm text-green-800">
@@ -178,10 +202,9 @@ export default function LoginForm({
                 </Link>
               </p>
               <p>
-                Forgot your password? Ask your school administrator to reset it,
-                or{" "}
+                Need help signing in?{" "}
                 <Link href="/contact" className="underline">
-                  contact support
+                  Contact support
                 </Link>
                 .
               </p>
