@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  Eye,
   GraduationCap,
   Mail,
   Shield,
