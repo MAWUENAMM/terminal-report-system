@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { GState, jsPDF } from "jspdf";
 import test from "node:test";
 import {
   amountInWords, dueFor, ghs, money,
@@ -52,4 +53,17 @@ test("receipt amount in words includes currency and pesewas",()=>{
   assert.equal(amountInWords(82.5),"eighty two Ghana cedis and fifty pesewas");
   assert.ok(amountInWords(1200).includes("one thousand two hundred"));
   assert.ok(ghs(400).includes("400"));
+});
+
+test("receipt watermark graphics state uses jsPDF GState, not a plain object",()=>{
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  assert.doesNotThrow(()=>{
+    doc.saveGraphicsState();
+    doc.setGState(new GState({opacity:0.065}));
+    doc.setFillColor(10,80,60);
+    doc.rect(10,10,30,30,"F");
+    doc.restoreGraphicsState();
+    const output=doc.output("arraybuffer");
+    assert.ok(output.byteLength>500);
+  });
 });
