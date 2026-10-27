@@ -43,6 +43,7 @@ create table public.finance_sales (
  student_id uuid not null,
  item_id uuid not null,
  quantity integer not null check(quantity between 1 and 100000),
+ request_key uuid not null unique,
  unit_price numeric(12,2) not null check(unit_price>=0),
  total numeric(12,2) generated always as (quantity * unit_price) stored,
  created_by uuid not null references public.school_users(id),
@@ -82,6 +83,7 @@ create table public.finance_payments (
  school_id uuid not null references public.schools(id),
  student_id uuid not null,
  amount numeric(12,2) not null check(amount>0 and amount<=99999999),
+ request_key uuid not null unique,
  method text not null check(method in ('CASH','MOMO','BANK','CHEQUE','OTHER')),
  reference text not null default '',
  note text not null default '',
@@ -112,7 +114,7 @@ create table public.finance_events (
  school_id uuid not null references public.schools(id),
  actor_id uuid not null references public.school_users(id),
  actor_name text not null,
- kind text not null check(kind in ('FEE_APPLIED','PAYMENT_RECEIVED','PAYMENT_VOIDED','PAYMENT_NOTICE','SALE','ITEM_UPDATED')),
+ kind text not null check(kind in ('FEE_CREATED','FEE_UPDATED','FEE_DELETED','FEE_APPLIED','PAYMENT_RECEIVED','PAYMENT_VOIDED','PAYMENT_NOTICE','SALE','ITEM_CREATED','ITEM_UPDATED','ITEM_DELETED')),
  payment_id uuid,
  message text not null,
  created_at timestamptz not null default now(),
@@ -252,7 +254,7 @@ begin
  return n;
 end $$;
 
-create or replace function public.finance_sell_item(p_item_id uuid,p_student_id uuid,p_quantity integer)
+create or replace function public.finance_sell_item(p_item_id uuid,p_student_id uuid,p_quantity integer,p_request_key uuid)
 returns uuid language plpgsql security definer set search_path=''
 as $$
 declare i public.finance_items%rowtype;
@@ -262,16 +264,29 @@ declare sale_id uuid;
 declare school public.schools%rowtype;
 begin
  if not private.finance_access() then raise exception 'Finance access required' using errcode='42501'; end if;
- if p_quantity is null or p_quantity<1 or p_quantity>10000 then raise exception 'Invalid quantity'; end if;
+ if p_quantity is null or p_quantity<1 or p_quantity>10000 or p_request_key is null then raise exception 'Invalid sale request'; end if;
  select * into i from public.finance_items where id=p_item_id and school_id=sid and active for update;
  if not found then raise exception 'Active item not found'; end if;
+ select s.id into sale_id from public.finance_sales s
+ where s.request_key=p_request_key and s.school_id=sid
+   and s.item_id=p_item_id and s.student_id=p_student_id and s.quantity=p_quantity;
+ if found then return sale_id; end if;
+ if exists(select 1 from public.finance_sales s where s.request_key=p_request_key)
+ then raise exception 'Sale request key already used with different details'; end if;
  if i.stock_quantity<p_quantity then raise exception 'Insufficient stock'; end if;
  perform 1 from public.students s where s.id=p_student_id and s.school_id=sid and s.status='ACTIVE';
  if not found then raise exception 'Student not found'; end if;
+ select id into payment_id from public.finance_payments
+ where request_key=p_request_key and school_id=sid and student_id=p_student_id
+ and amount=p_amount and method=p_method
+ and reference=coalesce(p_reference,'') and note=coalesce(p_note,'');
+ if found then return payment_id; end if;
+ if exists(select 1 from public.finance_payments where request_key=p_request_key)
+ then raise exception 'Payment request key already used with different details'; end if;
  select * into school from public.schools where id=sid;
  if i.unit_price<=0 then raise exception 'Item must have a positive price before sale'; end if;
- insert into public.finance_sales(school_id,student_id,item_id,quantity,unit_price,created_by)
- values(sid,p_student_id,i.id,p_quantity,i.unit_price,actor) returning id into sale_id;
+ insert into public.finance_sales(school_id,student_id,item_id,quantity,unit_price,created_by,request_key)
+ values(sid,p_student_id,i.id,p_quantity,i.unit_price,actor,p_request_key) returning id into sale_id;
  insert into public.finance_charges(school_id,student_id,academic_year,term,category,description,amount,sale_id,created_by)
  values(sid,p_student_id,school.academic_year,school.current_term,'ITEM',i.name||' × '||p_quantity,(i.unit_price*p_quantity),sale_id,actor);
  update public.finance_items set stock_quantity=stock_quantity-p_quantity where id=i.id;
@@ -282,7 +297,7 @@ begin
 end $$;
 
 create or replace function public.finance_record_payment(
- p_student_id uuid,p_amount numeric,p_method text,p_reference text default '',p_note text default ''
+ p_student_id uuid,p_amount numeric,p_method text,p_reference text default '',p_note text default '',p_request_key uuid default null
 )
 returns uuid language plpgsql security definer set search_path=''
 as $$
@@ -295,7 +310,7 @@ declare c record;
 declare sch public.schools%rowtype;
 begin
  if not private.finance_access() then raise exception 'Finance access required' using errcode='42501'; end if;
- if p_amount is null or p_amount<=0 or p_amount>99999999 or round(p_amount,2)<>p_amount then raise exception 'Invalid payment amount'; end if;
+ if p_request_key is null or p_amount is null or p_amount<=0 or p_amount>99999999 or round(p_amount,2)<>p_amount then raise exception 'Invalid payment request'; end if;
  if p_method not in ('CASH','MOMO','BANK','CHEQUE','OTHER') then raise exception 'Invalid payment method'; end if;
  if length(coalesce(p_reference,''))>120 or length(coalesce(p_note,''))>500 then raise exception 'Payment notes too long'; end if;
  perform 1 from public.students s where s.id=p_student_id and s.school_id=sid for update;
@@ -316,8 +331,8 @@ begin
    exit when remaining<=0;
    allocation:=least(remaining,c.due);
    if payment_id is null then
-     insert into public.finance_payments(school_id,student_id,amount,method,reference,note,created_by)
-     values(sid,p_student_id,p_amount,p_method,coalesce(p_reference,''),coalesce(p_note,''),actor)
+     insert into public.finance_payments(school_id,student_id,amount,method,reference,note,created_by,request_key)
+     values(sid,p_student_id,p_amount,p_method,coalesce(p_reference,''),coalesce(p_note,''),actor,p_request_key)
      returning id into payment_id;
    end if;
    insert into public.finance_allocations(school_id,payment_id,charge_id,amount)
@@ -370,10 +385,40 @@ begin
  return true;
 end $$;
 
+-- Every direct draft or inventory modification gets an immutable, school-scoped audit notification.
+create or replace function private.finance_track_edit()
+returns trigger language plpgsql security definer set search_path=''
+as $
+declare sid uuid;
+declare actor uuid:=private.member_id();
+declare title text;
+declare kind text;
+begin
+ sid:=coalesce(new.school_id,old.school_id);
+ if actor is null then return coalesce(new,old); end if;
+ if tg_table_name='finance_fees' then
+   kind:=case when tg_op='INSERT' then 'FEE_CREATED' when tg_op='DELETE' then 'FEE_DELETED' else 'FEE_UPDATED' end;
+   title:=case when tg_op='DELETE' then old.name else new.name end;
+ else
+   kind:=case when tg_op='INSERT' then 'ITEM_CREATED' when tg_op='DELETE' then 'ITEM_DELETED' else 'ITEM_UPDATED' end;
+   title:=case when tg_op='DELETE' then old.name else new.name end;
+ end if;
+ insert into public.finance_events(school_id,actor_id,actor_name,kind,message)
+ select sid,actor,u.full_name,kind,
+    replace(kind,'_',' ')||': '||left(title,120)
+ from public.school_users u where u.id=actor;
+ return coalesce(new,old);
+end $;
+revoke all on function private.finance_track_edit() from public,anon,authenticated;
+create trigger finance_fee_changed after insert or update or delete on public.finance_fees
+ for each row execute function private.finance_track_edit();
+create trigger finance_item_changed after insert or update or delete on public.finance_items
+ for each row execute function private.finance_track_edit();
+
 -- Explicit RPC execute grants; deny PUBLIC and anonymous users.
 revoke all on function public.finance_apply_fee(uuid) from public,anon;
-revoke all on function public.finance_sell_item(uuid,uuid,integer) from public,anon;
-revoke all on function public.finance_record_payment(uuid,numeric,text,text,text) from public,anon;
+revoke all on function public.finance_sell_item(uuid,uuid,integer,uuid) from public,anon;
+revoke all on function public.finance_record_payment(uuid,numeric,text,text,text,uuid) from public,anon;
 revoke all on function public.finance_void_payment(uuid,text) from public,anon;
 revoke all on function public.finance_notify_payment(uuid) from public,anon;
 grant execute on function public.finance_apply_fee(uuid),
