@@ -7,6 +7,9 @@ on:
   pull_request:
     paths:
       - 'src/app/dashboard/finance/**'
+      - 'src/app/finance-demo/**'
+      - 'src/components/finance-demo.tsx'
+      - 'src/app/dashboard/staff/page.tsx'
       - 'src/lib/finance-receipt.ts'
       - 'tests/finance-*'
       - 'supabase/migrations/*accountant*'
@@ -34,6 +37,6 @@ jobs:
       - name: Run existing and finance unit tests
         run: npm test
       - name: Lint new finance source
-        run: npx eslint src/app/dashboard/finance/page.tsx src/lib/finance-receipt.ts
+        run: npx eslint src/app/dashboard/finance/page.tsx src/app/finance-demo/page.tsx src/components/finance-demo.tsx src/app/dashboard/staff/page.tsx src/lib/finance-receipt.ts
       # The existing application has unrelated global React lint debt, tracked separately.
       # Keeping feature gates scoped avoids hiding or falsely attributing baseline errors.
