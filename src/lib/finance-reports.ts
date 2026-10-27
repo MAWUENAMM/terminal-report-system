@@ -110,7 +110,7 @@ export function downloadFinanceReport(data:FinanceReportData,kind:FinanceReportK
       ["Item","Unit price","Stock","Stock value","Status"],rows.items);
     add("ITEM SALES",["Date","Student","Item","Qty","Amount"],rows.sales);
   }
-  const pages=doc.internal.getNumberOfPages();
+  const pages=doc.getNumberOfPages();
   for(let i=1;i<=pages;i++){
     doc.setPage(i);doc.setDrawColor(226,177,61);doc.line(15,282,195,282);
     doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...muted);
