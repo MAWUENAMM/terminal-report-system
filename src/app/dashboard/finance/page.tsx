@@ -625,7 +625,7 @@ export default function SchoolFinance() {
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <div className="flex gap-2"><AlertCircle size={20} className="shrink-0"/>
               <div><strong>This is not a payment refund.</strong>
-                <p className="mt-1 leading-6">This cancels a fee or levy that was assigned by mistake. The original record stays in the audit history, and the student's outstanding balance is recalculated. If a student has already paid toward this fee, reverse the affected payment first in <strong>Payments & receipts</strong>.</p>
+                <p className="mt-1 leading-6">This cancels a fee or levy that was assigned by mistake. The original record stays in the audit history, and the student&apos;s outstanding balance is recalculated. If a student has already paid toward this fee, reverse the affected payment first in <strong>Payments & receipts</strong>.</p>
               </div>
             </div>
           </div>
