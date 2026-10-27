@@ -277,13 +277,6 @@ begin
  if i.stock_quantity<p_quantity then raise exception 'Insufficient stock'; end if;
  perform 1 from public.students s where s.id=p_student_id and s.school_id=sid and s.status='ACTIVE';
  if not found then raise exception 'Student not found'; end if;
- select id into payment_id from public.finance_payments
- where request_key=p_request_key and school_id=sid and student_id=p_student_id
- and amount=p_amount and method=p_method
- and reference=coalesce(p_reference,'') and note=coalesce(p_note,'');
- if found then return payment_id; end if;
- if exists(select 1 from public.finance_payments where request_key=p_request_key)
- then raise exception 'Payment request key already used with different details'; end if;
  select * into school from public.schools where id=sid;
  if i.unit_price<=0 then raise exception 'Item must have a positive price before sale'; end if;
  insert into public.finance_sales(school_id,student_id,item_id,quantity,unit_price,created_by,request_key)
@@ -316,6 +309,13 @@ begin
  if length(coalesce(p_reference,''))>120 or length(coalesce(p_note,''))>500 then raise exception 'Payment notes too long'; end if;
  perform 1 from public.students s where s.id=p_student_id and s.school_id=sid for update;
  if not found then raise exception 'Student not found'; end if;
+ select id into payment_id from public.finance_payments
+ where request_key=p_request_key and school_id=sid and student_id=p_student_id
+ and amount=p_amount and method=p_method
+ and reference=coalesce(p_reference,'') and note=coalesce(p_note,'');
+ if found then return payment_id; end if;
+ if exists(select 1 from public.finance_payments where request_key=p_request_key)
+ then raise exception 'Payment request key already used with different details'; end if;
  select * into sch from public.schools where id=sid;
  remaining:=p_amount;
  -- Keep a single student-row lock for all pay/sell/void operations to serialize balance updates.
