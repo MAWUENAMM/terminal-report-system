@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -42,6 +42,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<DashboardTheme>("light");
   const [navQuery, setNavQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const [pendingRequests, setPendingRequests] = useState<
     Array<{
       id: string;
@@ -54,6 +55,24 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     id:string;kind:string;message:string;actor_name:string;created_at:string;
   }>>([]);
   const [financeReadIds,setFinanceReadIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const outside = (event: PointerEvent) => {
+      if(event.target instanceof Node && !notificationsRef.current?.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+    const escape = (event: KeyboardEvent) => {
+      if(event.key==="Escape") setNotificationsOpen(false);
+    };
+    document.addEventListener("pointerdown",outside);
+    document.addEventListener("keydown",escape);
+    return () => {
+      document.removeEventListener("pointerdown",outside);
+      document.removeEventListener("keydown",escape);
+    };
+  }, [notificationsOpen]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("edureport:dashboard-theme");
@@ -574,7 +593,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
 
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 className={
                   "dashboard-icon-button relative rounded-xl border p-2.5 transition " +
