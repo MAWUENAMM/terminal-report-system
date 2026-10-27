@@ -563,6 +563,53 @@ export default function SchoolFinance() {
         </section>}
       </div>}
 
+      {view==="reports"&&<section className="space-y-5">
+        <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-r from-[#09553d] to-[#198064] px-6 py-6 text-white">
+            <div className="flex items-center gap-3"><FileDown size={26}/><div>
+              <h2 className="text-xl font-bold">School Finance Reports & Exports</h2>
+              <p className="mt-1 text-sm text-emerald-100">Download school-wide records, including fees, receipts, balances and shop sales.</p>
+            </div></div>
+          </div>
+          <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+            {([
+              ["all","Consolidated financial report","Every student's balance, payment history, charges, inventory and item sales.",Wallet],
+              ["accounts","Student account balances","Who has paid, owes money, or has no fees.",Users],
+              ["payments","Payment transactions","All receipt numbers, payment modes, dates and reversals.",CreditCard],
+              ["charges","Charges and fees","Term fees, custom levies and item charges, including voided entries.",ClipboardList],
+              ["inventory","Items and sales","Inventory valuation, stock levels and item sales history.",ShoppingBag]
+            ] as const).map(([key,title,description,Icon])=><article key={key} className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div><span className="inline-grid h-10 w-10 place-items-center rounded-xl bg-emerald-100 text-emerald-800"><Icon size={19}/></span>
+                <h3 className="mt-3 font-bold text-slate-900">{title}</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{description}</p>
+              </div>
+              <button type="button" disabled={loading||busy} className="btn-primary w-full" onClick={()=>downloadFinanceReport(reportData,key)}>
+                <FileDown size={16}/> Download PDF
+              </button>
+            </article>)}
+          </div>
+        </div>
+        <div className="surface rounded-2xl p-5">
+          <h2 className="flex items-center gap-2 text-lg font-bold"><TableProperties size={20} className="text-emerald-700"/> Spreadsheet-ready CSV exports</h2>
+          <p className="mt-2 text-sm text-muted">Open in Excel or Google Sheets for analysis. Reports include all stored academic years and terms; reversed transactions remain clearly marked.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" className="btn-secondary" disabled={loading||busy} onClick={()=>exportFinanceCsv(reportRows(reportData).balances,["Admission","Student","Class","Charged","Paid","Outstanding","Status"],"student-finance-balances.csv")}>
+              <FileDown size={16}/> Student balances CSV
+            </button>
+            <button type="button" className="btn-secondary" disabled={loading||busy} onClick={()=>exportFinanceCsv(reportRows(reportData).payments,["Date","Receipt Number","Student","Payment Method","Reference","Amount","Status"],"finance-payments.csv")}>
+              <FileDown size={16}/> Payments CSV
+            </button>
+            <button type="button" className="btn-secondary" disabled={loading||busy} onClick={()=>exportFinanceCsv(reportRows(reportData).charges,["Date","Student","Description","Academic Year / Term","Type","Amount","Status"],"finance-charges.csv")}>
+              <FileDown size={16}/> Charges CSV
+            </button>
+            <button type="button" className="btn-secondary" disabled={loading||busy} onClick={()=>exportFinanceCsv(reportRows(reportData).items,["Item","Unit Price","Stock","Stock Value","Status"],"finance-inventory.csv")}>
+              <FileDown size={16}/> Inventory CSV
+            </button>
+          </div>
+          <p className="mt-4 text-xs text-muted">These reports reflect current records at download time; receipt PDFs remain linked to individual payment transactions.</p>
+        </div>
+      </section>}
+
       {view==="activity"&&<section className="surface rounded-2xl p-5">
         <h2 className="text-lg font-bold">Finance activity & notifications</h2>
         <p className="mt-2 text-sm text-muted">This is the shared finance activity trail for school Administrators and the Accountant.</p>
@@ -573,6 +620,47 @@ export default function SchoolFinance() {
         {!events.length&&<Empty>No finance activity recorded yet.</Empty>}</div>
       </section>}
 
+      {correctingCharge&&<Modal title="Correct or cancel a student fee" onClose={()=>{setCorrectingCharge(null);setCorrectionReason("");}}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <div className="flex gap-2"><AlertCircle size={20} className="shrink-0"/>
+              <div><strong>This is not a payment refund.</strong>
+                <p className="mt-1 leading-6">This cancels a fee or levy that was assigned by mistake. The original record stays in the audit history, and the student's outstanding balance is recalculated. If a student has already paid toward this fee, reverse the affected payment first in <strong>Payments & receipts</strong>.</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-4 text-sm">
+            <p className="font-bold text-slate-900">{correctingCharge.description}</p>
+            <p className="mt-1 text-xs text-slate-500">{correctingCharge.academic_year} · Term {correctingCharge.term}</p>
+            <div className="mt-3 flex items-center justify-between"><span>Original fee</span><strong>{ghs(Number(correctingCharge.amount))}</strong></div>
+            <div className="mt-1 flex items-center justify-between"><span>Amount already paid</span><strong className="text-emerald-700">{ghs(chargePaid(correctingCharge.id))}</strong></div>
+          </div>
+          {chargePaid(correctingCharge.id)>0?(
+            <>
+              <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                This fee already has payments. It cannot be cancelled until the affected payment has been reversed to keep the ledger accurate.
+              </p>
+              <button className="btn-secondary w-full" type="button" onClick={()=>{setCorrectingCharge(null);setView("payments");}}>
+                Open student payments
+              </button>
+            </>
+          ):(
+            <form className="space-y-4" onSubmit={voidCharge}>
+              <Field label="Reason for cancelling this charge (required)">
+                <textarea className="field" required minLength={8} maxLength={500} rows={3}
+                  placeholder="Example: Fee assigned to the wrong student"
+                  value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} />
+              </Field>
+              <div className="flex flex-wrap gap-3">
+                <button className="btn-secondary" type="button" onClick={()=>setCorrectingCharge(null)}>Keep the fee</button>
+                <button className="btn-primary !bg-rose-700" type="submit" disabled={busy||correctionReason.trim().length<8}>
+                  <AlertCircle size={16}/> Confirm fee cancellation
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </Modal>}
       {feeEditing&&<Modal title="Edit fee draft" onClose={()=>{setFeeEditing(null);setFeeName("");setFeeAmount("");}}>
         <form className="space-y-4" onSubmit={editFee}>
           <Field label="Name"><input className="field" maxLength={150} required value={feeName} onChange={e=>setFeeName(e.target.value)}/></Field>
