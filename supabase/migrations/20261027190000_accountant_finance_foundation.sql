@@ -115,7 +115,7 @@ create table public.finance_events (
  school_id uuid not null references public.schools(id),
  actor_id uuid not null references public.school_users(id),
  actor_name text not null,
- kind text not null check(kind in ('FEE_CREATED','FEE_UPDATED','FEE_DELETED','FEE_APPLIED','PAYMENT_RECEIVED','PAYMENT_VOIDED','PAYMENT_NOTICE','SALE','ITEM_CREATED','ITEM_UPDATED','ITEM_DELETED')),
+ kind text not null check(kind in ('FEE_CREATED','FEE_UPDATED','FEE_DELETED','FEE_APPLIED','CHARGE_VOIDED','PAYMENT_RECEIVED','PAYMENT_VOIDED','PAYMENT_NOTICE','SALE','ITEM_CREATED','ITEM_UPDATED','ITEM_DELETED')),
  payment_id uuid,
  message text not null,
  created_at timestamptz not null default now(),
@@ -369,6 +369,35 @@ begin
  return true;
 end $$;
 
+-- Correct an erroneous unpaid charge without erasing ledger history.
+-- If a payment has ever been allocated and remains active, reverse that payment first.
+create or replace function public.finance_void_charge(p_charge_id uuid,p_reason text)
+returns boolean language plpgsql security definer set search_path=''
+as $
+declare ch public.finance_charges%rowtype;
+declare sid uuid:=private.member_school();
+declare actor uuid:=private.member_id();
+begin
+ if not private.finance_access() then raise exception 'Finance access required' using errcode='42501'; end if;
+ if length(trim(coalesce(p_reason,'')))<8 or length(p_reason)>500
+ then raise exception 'A reason between 8 and 500 characters is required'; end if;
+ select * into ch from public.finance_charges where id=p_charge_id and school_id=sid;
+ if not found then raise exception 'Charge not found'; end if;
+ perform 1 from public.students where id=ch.student_id and school_id=sid for update;
+ select * into ch from public.finance_charges where id=p_charge_id and school_id=sid for update;
+ if ch.voided_at is not null then raise exception 'Charge already voided'; end if;
+ if ch.sale_id is not null then raise exception 'Item-sale charges cannot be voided directly; use a sale-return workflow'; end if;
+ if exists(select 1 from public.finance_allocations a join public.finance_payments p
+   on p.id=a.payment_id where a.charge_id=p_charge_id and p.voided_at is null)
+ then raise exception 'Reverse active payment allocations before voiding the charge'; end if;
+ update public.finance_charges set voided_at=now(),void_reason=trim(p_reason) where id=ch.id;
+ insert into public.finance_events(school_id,actor_id,actor_name,kind,message)
+ select sid,actor,u.full_name,'CHARGE_VOIDED',
+ 'Voided charge '||ch.description||': '||left(trim(p_reason),200)
+ from public.school_users u where u.id=actor;
+ return true;
+end $;
+
 create or replace function public.finance_notify_payment(p_payment_id uuid)
 returns boolean language plpgsql security definer set search_path=''
 as $$
@@ -422,8 +451,10 @@ revoke all on function public.finance_sell_item(uuid,uuid,integer,uuid) from pub
 revoke all on function public.finance_record_payment(uuid,numeric,text,text,text,uuid) from public,anon;
 revoke all on function public.finance_void_payment(uuid,text) from public,anon;
 revoke all on function public.finance_notify_payment(uuid) from public,anon;
+revoke all on function public.finance_void_charge(uuid,text) from public,anon;
 grant execute on function public.finance_apply_fee(uuid),
  public.finance_sell_item(uuid,uuid,integer),
  public.finance_record_payment(uuid,numeric,text,text,text),
  public.finance_void_payment(uuid,text),
- public.finance_notify_payment(uuid) to authenticated;
+ public.finance_notify_payment(uuid),
+ public.finance_void_charge(uuid,text) to authenticated;
