@@ -373,7 +373,7 @@ end $$;
 -- If a payment has ever been allocated and remains active, reverse that payment first.
 create or replace function public.finance_void_charge(p_charge_id uuid,p_reason text)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare ch public.finance_charges%rowtype;
 declare sid uuid:=private.member_school();
 declare actor uuid:=private.member_id();
@@ -396,7 +396,7 @@ begin
  'Voided charge '||ch.description||': '||left(trim(p_reason),200)
  from public.school_users u where u.id=actor;
  return true;
-end $;
+end $$;
 
 create or replace function public.finance_notify_payment(p_payment_id uuid)
 returns boolean language plpgsql security definer set search_path=''
@@ -418,7 +418,7 @@ end $$;
 -- Every direct draft or inventory modification gets an immutable, school-scoped audit notification.
 create or replace function private.finance_track_edit()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 declare sid uuid;
 declare actor uuid:=private.member_id();
 declare title text;
@@ -438,7 +438,7 @@ begin
     replace(kind,'_',' ')||': '||left(title,120)
  from public.school_users u where u.id=actor;
  return coalesce(new,old);
-end $;
+end $$;
 revoke all on function private.finance_track_edit() from public,anon,authenticated;
 create trigger finance_fee_changed after insert or update or delete on public.finance_fees
  for each row execute function private.finance_track_edit();
