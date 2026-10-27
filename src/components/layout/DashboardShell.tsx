@@ -50,6 +50,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       created_at: string;
     }>
   >([]);
+  const [financeEvents,setFinanceEvents] = useState<Array<{
+    id:string;kind:string;message:string;actor_name:string;created_at:string;
+  }>>([]);
+  const [financeReadIds,setFinanceReadIds] = useState<string[]>([]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("edureport:dashboard-theme");
@@ -98,6 +102,43 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
     };
   }, [w.operator]);
+
+  useEffect(() => {
+    if (w.profile.role !== "ADMIN" && w.profile.role !== "ACCOUNTANT") {
+      setFinanceEvents([]);
+      setFinanceReadIds([]);
+      return;
+    }
+    let active=true;
+    const refresh=async()=>{
+      const db=browserClient();
+      const {data:events,error}=await db.from("finance_events")
+        .select("id,kind,message,actor_name,created_at")
+        .eq("school_id",w.school.id).order("created_at",{ascending:false}).limit(12);
+      if(error || !active)return;
+      const ids=(events||[]).map(e=>e.id);
+      const reads=ids.length?await db.from("finance_event_reads")
+        .select("event_id").eq("user_id",w.profile.id).in("event_id",ids):{data:[]};
+      if(active){
+        setFinanceEvents(events||[]);
+        setFinanceReadIds((reads.data||[]).map(r=>r.event_id));
+      }
+    };
+    void refresh();
+    const id=window.setInterval(()=>{if(!document.hidden)void refresh();},60000);
+    window.addEventListener("focus",refresh);
+    return()=>{active=false;window.clearInterval(id);window.removeEventListener("focus",refresh);};
+  },[w.profile.role,w.profile.id,w.school.id]);
+
+  async function readFinanceNotifications(){
+    const unread=financeEvents.filter(e=>!financeReadIds.includes(e.id));
+    if(!unread.length)return;
+    const {error}=await browserClient().from("finance_event_reads").upsert(
+      unread.map(e=>({event_id:e.id,user_id:w.profile.id})),
+      {onConflict:"event_id,user_id",ignoreDuplicates:true}
+    );
+    if(!error)setFinanceReadIds(ids=>[...ids,...unread.map(e=>e.id)]);
+  }
 
   const schoolActive = w.school.active && !w.school.deleted_at;
   const platformPage = [
@@ -160,8 +201,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     (!w.classes.length ||
       !w.students.some((student) => student.status === "ACTIVE"));
 
+  const unreadFinanceCount=financeEvents.filter(e=>!financeReadIds.includes(e.id)).length;
   const notificationCount =
-    pendingRequests.length +
+    unreadFinanceCount + pendingRequests.length +
     (reportAttention > 0 ? 1 : 0) +
     (currentTerm?.status === "CLOSED" ? 1 : 0) +
     (setupAttention ? 1 : 0);
@@ -234,6 +276,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       path: "/dashboard/finance",
       label: "School finance",
       icon: Wallet,
+      badge: unreadFinanceCount,
       show: admin || w.profile.role === "ACCOUNTANT",
     },
     {
@@ -540,7 +583,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                     : "")
                 }
                 aria-expanded={notificationsOpen}
-                onClick={() => setNotificationsOpen((open) => !open)}
+                onClick={() => {
+                  setNotificationsOpen(open=>!open);
+                  void readFinanceNotifications();
+                }}
               >
                 <Bell size={18} />
                 {notificationCount > 0 && (
@@ -599,6 +645,25 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                           </span>
                         </Link>
                       ))}
+
+                    {financeEvents.map(event=>(
+                      <Link
+                        key={event.id}
+                        href="/dashboard/finance"
+                        onClick={()=>setNotificationsOpen(false)}
+                        className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
+                      >
+                        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                          <Wallet size={16}/>
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800">{event.message}</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {event.actor_name} · {new Date(event.created_at).toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"})}
+                          </span>
+                        </span>
+                      </Link>
+                    ))}
 
                     {reportAttention > 0 && (
                       <Link
