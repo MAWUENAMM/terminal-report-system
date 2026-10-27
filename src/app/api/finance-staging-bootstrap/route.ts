@@ -33,6 +33,35 @@ export async function GET(request: NextRequest) {
   const accountantEmail = "finance.accountant@edureport-demo.test";
 
   try {
+    if (request.nextUrl.searchParams.get("mode") === "accountant") {
+      const adminTemp = process.env.EDUREPORT_STAGING_ADMIN_TEMP_PASSWORD || "";
+      if (adminTemp.length < 20) return reply("Testing admin credential not configured.", 503);
+      const tokenRes = await fetch(url + "/auth/v1/token?grant_type=password", {
+        method:"POST",
+        headers:{"Content-Type":"application/json",apikey:key},
+        body:JSON.stringify({email:adminEmail,password:adminTemp}),
+        cache:"no-store"
+      });
+      const token = await tokenRes.json();
+      if(!tokenRes.ok || !token.access_token)
+        return reply("Test admin sign-in failed: "+String(token.error_description||token.msg||token.error||"No session"),502);
+      const created=await fetch(endpoint,{
+        method:"POST",
+        headers:{"Content-Type":"application/json",apikey:key,Authorization:"Bearer "+token.access_token},
+        body:JSON.stringify({
+          action:"create_staff",
+          full_name:"Finance Test Accountant",
+          email:accountantEmail,
+          role:"ACCOUNTANT",
+          active:true
+        }),
+        cache:"no-store"
+      });
+      const data=await created.json();
+      if(!created.ok) return reply("Accountant creation failed: "+String(data.error||created.status),created.status);
+      return NextResponse.json({success:true,accountant:{email:accountantEmail,password:data.temporaryPassword}},
+        {headers:{"Cache-Control":"no-store"}});
+    }
     const bootstrap = await fetch(endpoint, {
       method: "POST",
       headers: {"Content-Type":"application/json",apikey:key,"x-setup-token":setup},
