@@ -17,22 +17,43 @@ export default function Staff() {
       <PageHeader
         eyebrow="People & access"
         title="Staff accounts"
-        description="Give each staff member an individual account. Class and subject assignments determine their teaching responsibilities."
+        description="School Administrators can create staff accounts, assign or change roles, and appoint an Accountant for this school. Finance staff only access their school's records."
       >
-        <button
-          className="btn-primary"
-          onClick={() =>
-            setDraft({
-              full_name: "",
-              email: "",
-              role: "CLASS_TEACHER",
-              active: true,
-            })
-          }
-        >
-          Add staff member
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="btn-secondary"
+            onClick={() =>
+              setDraft({
+                full_name: "",
+                email: "",
+                role: "ACCOUNTANT",
+                active: true,
+              })
+            }
+          >
+            Add Accountant
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() =>
+              setDraft({
+                full_name: "",
+                email: "",
+                role: "CLASS_TEACHER",
+                active: true,
+              })
+            }
+          >
+            Add staff member
+          </button>
+        </div>
       </PageHeader>
+      <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+        <strong>Assign an Accountant:</strong> Select <strong>Add Accountant</strong> to create a new account, or choose
+        <strong> Edit</strong> beside an existing staff member and change their Primary role to <strong>Accountant</strong>.
+        When the Finance module is released, they will have a dedicated finance workspace; School Administrators retain
+        the same financial permissions.
+      </div>
       <div className="surface overflow-x-auto rounded-2xl">
         <table className="data-table">
           <thead>
@@ -161,6 +182,13 @@ export default function Staff() {
                 ))}
               </select>
             </Field>
+            {draft.role === "ACCOUNTANT" && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+                Accountants can manage school fees, payments, receipts and inventory for this school.
+                They cannot modify teaching assessments or manage other staff accounts.
+                Administrators also retain full finance access.
+              </div>
+            )}
             {draft.id && (
               <label className="flex items-center gap-2 text-sm">
                 <input
