@@ -52,7 +52,7 @@ export default function SchoolFinance() {
   const [events,setEvents]=useState<Event[]>([]);
   const [images,setImages]=useState<Record<string,string>>({});
   const [search,setSearch]=useState("");
-  const [selectedStudent,setSelectedStudent]=useState("");
+  const [selectedStudent,setSelectedStudent]=useState(()=>typeof window==="undefined"?"":new URLSearchParams(window.location.search).get("student")||"");
   const [feeName,setFeeName]=useState("");
   const [feeCategory,setFeeCategory]=useState<"FEE"|"OTHER">("FEE");
   const [feeAmount,setFeeAmount]=useState("");
@@ -96,13 +96,7 @@ export default function SchoolFinance() {
     finally{setLoading(false);}
   },[authorized,w.school.id]);
 
-  useEffect(()=>{void load();},[load]);
-  useEffect(()=>{
-    const id=new URLSearchParams(window.location.search).get("student");
-    if(id && w.students.some(student=>student.id===id)) {
-      setSelectedStudent(id);setView("accounts");
-    }
-  },[w.students]);
+  useEffect(()=>{void Promise.resolve().then(load);},[load]);
 
   const students=useMemo(()=>w.students.filter(s=>s.status==="ACTIVE").sort((a,b)=>fullName(a).localeCompare(fullName(b))),[w.students]);
   const balances=useMemo(()=>new Map(w.students.map(s=>[s.id,dueFor(s.id,charges,payments,allocations)])),[w.students,charges,payments,allocations]);
