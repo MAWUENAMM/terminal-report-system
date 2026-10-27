@@ -16,6 +16,7 @@ create table public.finance_fees (
  term smallint not null check(term between 1 and 3),
  class_id uuid,
  name text not null check(length(trim(name)) between 2 and 150),
+ category text not null default 'FEE' check(category in ('FEE','OTHER')),
  amount numeric(12,2) not null check(amount>0 and amount<=99999999),
  status text not null default 'DRAFT' check(status in ('DRAFT','APPLIED')),
  created_by uuid not null references public.school_users(id),
@@ -148,7 +149,7 @@ begin
 end $$;
 grant insert on public.finance_fees,public.finance_items,public.finance_event_reads to authenticated;
 grant delete on public.finance_fees,public.finance_items to authenticated;
-grant update(name,amount) on public.finance_fees to authenticated;
+grant update(name,amount,category) on public.finance_fees to authenticated;
 grant update(name,description,unit_price,stock_quantity,image_path,active) on public.finance_items to authenticated;
 
 create or replace function private.finance_access()
@@ -241,7 +242,7 @@ begin
  if not exists(select 1 from public.academic_terms t where t.school_id=f.school_id and t.academic_year=f.academic_year and t.term=f.term and t.status='OPEN')
  then raise exception 'Term is not open'; end if;
  insert into public.finance_charges(school_id,student_id,academic_year,term,category,description,amount,fee_id,created_by)
- select f.school_id,s.id,f.academic_year,f.term,'FEE',f.name,f.amount,f.id,actor
+ select f.school_id,s.id,f.academic_year,f.term,f.category,f.name,f.amount,f.id,actor
  from public.students s where s.school_id=f.school_id and s.status='ACTIVE'
  and (f.class_id is null or s.class_id=f.class_id)
  on conflict(student_id,fee_id) do nothing;
