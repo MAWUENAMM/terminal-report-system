@@ -12,7 +12,7 @@ const headers = {
   "Content-Type": "application/json",
   "Cache-Control": "no-store",
 };
-const roles = ["ADMIN", "HEADTEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER"];
+const roles = ["ADMIN", "ACCOUNTANT", "HEADTEACHER", "CLASS_TEACHER", "SUBJECT_TEACHER"];
 function reply(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
 }
