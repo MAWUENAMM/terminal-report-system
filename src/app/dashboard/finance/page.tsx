@@ -174,6 +174,13 @@ export default function SchoolFinance() {
       if(error)throw new Error(error.message);
     },"Draft removed.");
   }
+  async function voidCharge(charge:FinanceCharge){
+    const reason=prompt("Explain why this charge must be voided (8–500 characters). Recorded payments must be reversed first; inventory sales require a separate return process.");
+    if(!reason)return;
+    await perform(async()=>{
+      await invoke("finance_void_charge",{p_charge_id:charge.id,p_reason:reason});
+    },"Charge voided. The original record remains in the audit trail.");
+  }
   async function pay(event:FormEvent){
     event.preventDefault();
     if(!selected || !moneyInput(paymentAmount))return setError("Choose a learner and a valid payment amount.");
@@ -355,7 +362,10 @@ export default function SchoolFinance() {
             <div className="mt-4 space-y-3">
               {selectedCharges.map(c=><div key={c.id} className="rounded-xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{c.description}</p><p className="mt-1 text-xs text-muted">{c.academic_year} · Term {c.term} · {c.category}</p></div>
-                <strong className="tabular-nums">{ghs(c.amount)}</strong></div>
+                <div className="text-right"><strong className="tabular-nums">{ghs(c.amount)}</strong>
+                  {c.category!=="ITEM"&&<button className="mt-2 block text-xs font-semibold text-red-700 hover:underline"
+                    disabled={busy} onClick={()=>void voidCharge(c)}>Correct / void charge</button>}
+                </div></div>
               </div>)}
               {!selectedCharges.length&&<Empty>No charges have been assigned yet.</Empty>}
             </div>}
