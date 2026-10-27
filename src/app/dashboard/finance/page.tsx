@@ -5,12 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   ArrowDownToLine, BellRing, BookOpen, Check, CircleDollarSign,
   ClipboardList, CreditCard, History, Package, Plus, RefreshCcw,
-  Search, ShoppingBag, Trash2, Wallet
+  Search, ShoppingBag, Trash2, Wallet, FileDown, TableProperties, AlertCircle, CircleCheck, Users
 } from "lucide-react";
 import { browserClient } from "@/lib/supabase/client";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Empty, Field, Modal, Restricted } from "@/components/ui";
 import { fullName } from "@/lib/models";
+import { downloadFinanceReport, exportFinanceCsv, reportRows } from "@/lib/finance-reports";
 import {
   dueFor, downloadFinanceReceipt, ghs,
   type FinanceAllocation, type FinanceCharge, type FinancePayment
@@ -32,10 +33,16 @@ type Event = {
   id:string;kind:string;message:string;actor_name:string;
   payment_id:string|null;created_at:string;
 };
-type View = "accounts"|"fees"|"payments"|"items"|"activity";
+type View = "accounts"|"fees"|"payments"|"items"|"activity"|"reports";
 type ItemDraft = { id?:string;name:string;description:string;unit_price:string;stock_quantity:string;active:boolean;image:File|null };
 const emptyItem = ():ItemDraft=>({name:"",description:"",unit_price:"",stock_quantity:"0",active:true,image:null});
 const moneyInput = (value:string) => /^\d{1,8}(\.\d{1,2})?$/.test(value) && Number(value)>0;
+const financeStatus=(charged:number,paid:number,outstanding:number)=>{
+  if(charged<=0)return {label:"No fees",classes:"bg-slate-100 text-slate-600 ring-slate-200",bar:"bg-slate-400"};
+  if(outstanding<=0)return {label:"Fully paid",classes:"bg-emerald-100 text-emerald-800 ring-emerald-200",bar:"bg-emerald-500"};
+  if(paid>0)return {label:"Part-paid",classes:"bg-amber-100 text-amber-800 ring-amber-200",bar:"bg-amber-500"};
+  return {label:"Unpaid",classes:"bg-rose-100 text-rose-800 ring-rose-200",bar:"bg-rose-500"};
+};
 
 export default function SchoolFinance() {
   const {data:w,run,busy}=useWorkspace();
@@ -129,6 +136,9 @@ export default function SchoolFinance() {
   const selectedBalance=balances.get(selectedStudent)||{charged:0,paid:0,outstanding:0};
   const selectedCharges=charges.filter(c=>c.student_id===selectedStudent && !c.voided_at).sort((a,b)=>b.created_at.localeCompare(a.created_at));
   const selectedPayments=payments.filter(p=>p.student_id===selectedStudent).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+  const activePaymentIds=new Set(payments.filter(p=>!p.voided_at).map(p=>p.id));
+  const chargePaid=(chargeId:string)=>allocations.filter(a=>a.charge_id===chargeId&&activePaymentIds.has(a.payment_id)).reduce((total,a)=>total+Number(a.amount),0);
+  const reportData={school:w.school,students:w.students,classes:w.classes,charges,payments,allocations,items,sales};
   const searchable=students.filter(s=>(fullName(s)+" "+s.admission_number).toLowerCase().includes(search.toLowerCase()));
 
   async function perform(task:()=>Promise<void>,message:string){
@@ -294,13 +304,17 @@ export default function SchoolFinance() {
     {key:"fees",title:"Fees & charges",icon:ClipboardList},
     {key:"payments",title:"Payments & receipts",icon:CreditCard},
     {key:"items",title:"Items & sales",icon:ShoppingBag},
-    {key:"activity",title:"Finance activity",icon:History}
+    {key:"activity",title:"Finance activity",icon:History},
+    {key:"reports",title:"Download reports",icon:FileDown}
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="School operations · Finance" title="Finance & Accounting"
         description={"Fee management, balances, student payments, inventory sales and traceable receipts for "+w.school.name+". All values are Ghana cedis."}>
+        <button className="btn-primary" onClick={()=>downloadFinanceReport(reportData,"all")} disabled={loading||busy}>
+          <FileDown size={16}/> Full finance report
+        </button>
         <button className="btn-secondary" onClick={()=>void load()} disabled={loading||busy}>
           <RefreshCcw size={16}/> Refresh
         </button>
@@ -353,37 +367,80 @@ export default function SchoolFinance() {
           </div>}
         </section>}
 
-      {view==="accounts"&&<div className="grid gap-5 xl:grid-cols-[1fr_.9fr]">
-        <section className="surface rounded-2xl p-5">
-          <h2 className="text-lg font-bold">Student financial accounts</h2>
-          <p className="mt-1 text-xs text-muted">Charges and payments from every recorded academic term, including arrears.</p>
-          <div className="mt-4 max-h-[550px] overflow-auto">
-            <table className="w-full min-w-[530px] text-sm">
-              <thead className="border-b text-left text-xs uppercase text-muted"><tr><th className="py-3">Learner</th><th className="py-3 text-right">Charged</th><th className="py-3 text-right">Paid</th><th className="py-3 text-right">Balance</th><th className="py-3 text-right">Status</th></tr></thead>
-              <tbody>{searchable.map(s=>{
-                const b=balances.get(s.id)!;
-                return <tr key={s.id} onClick={()=>setSelectedStudent(s.id)} className={"cursor-pointer border-b border-slate-100 hover:bg-emerald-50/50 "+(selectedStudent===s.id?"bg-emerald-50":"")}>
-                  <td className="py-3"><p className="font-semibold">{fullName(s)}</p><p className="text-xs text-muted">{s.admission_number}</p></td>
-                  <td className="text-right tabular-nums">{ghs(b.charged)}</td><td className="text-right tabular-nums">{ghs(b.paid)}</td><td className="text-right font-bold tabular-nums">{ghs(b.outstanding)}</td>
-                  <td className="text-right text-xs font-semibold">{b.charged===0?"No fees":b.outstanding===0?"Fully paid":b.paid>0?"Part-paid":"Unpaid"}</td>
+      {view==="accounts"&&<div className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-r from-[#09563e] via-[#116e53] to-[#168365] px-5 py-5 text-white sm:px-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-100">Student finance records</div>
+                <h2 className="mt-2 text-xl font-bold tracking-tight">Student financial accounts</h2>
+                <p className="mt-2 text-xs text-emerald-50">Live outstanding balances across all recorded terms and items.</p>
+              </div>
+              <span className="rounded-xl border border-white/25 bg-white/10 px-4 py-2 text-sm font-bold">{searchable.length} learners</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-4">
+            {[
+              ["Fully paid", "bg-emerald-100 text-emerald-800", students.filter(st=>{const b=balances.get(st.id)!;return b.charged>0&&b.outstanding<=0;}).length],
+              ["Part-paid","bg-amber-100 text-amber-800",students.filter(st=>{const b=balances.get(st.id)!;return b.charged>0&&b.paid>0&&b.outstanding>0;}).length],
+              ["Unpaid","bg-rose-100 text-rose-800",students.filter(st=>{const b=balances.get(st.id)!;return b.charged>0&&b.paid===0;}).length],
+              ["No fees","bg-slate-100 text-slate-700",students.filter(st=>balances.get(st.id)!.charged<=0).length]
+            ].map(([title,classes,count])=><span key={String(title)} className={"rounded-full px-3 py-1.5 text-xs font-semibold "+String(classes)}>{String(title)}: {String(count)}</span>)}
+          </div>
+          <div className="max-h-[580px] overflow-auto p-3 sm:p-4">
+            <table className="w-full min-w-[570px] border-separate border-spacing-y-2 text-sm">
+              <thead className="text-left text-[10px] font-bold uppercase tracking-[.08em] text-slate-500">
+                <tr><th className="px-3 py-2">Student</th><th className="px-3 py-2 text-right">Charged</th>
+                  <th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Balance</th>
+                  <th className="px-3 py-2 text-right">Status</th></tr>
+              </thead>
+              <tbody>{searchable.map(st=>{
+                const b=balances.get(st.id)!;
+                const status=financeStatus(b.charged,b.paid,b.outstanding);
+                const progress=b.charged>0?Math.min(100,Math.max(0,Math.round(b.paid/b.charged*100))):0;
+                return <tr key={st.id} onClick={()=>setSelectedStudent(st.id)}
+                  className={"cursor-pointer rounded-xl outline-none transition hover:shadow-sm focus-within:ring-2 focus-within:ring-emerald-300 "+(selectedStudent===st.id?"bg-emerald-50":"bg-slate-50 hover:bg-emerald-50/70")}>
+                  <td className="rounded-l-xl px-3 py-3">
+                    <button className="text-left" type="button" onClick={()=>setSelectedStudent(st.id)}>
+                      <span className="font-bold text-slate-900">{fullName(st)}</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500">{st.admission_number} · {w.classes.find(c=>c.id===st.class_id)?.name||"Student"}</span>
+                    </button>
+                    <div className="mt-2 h-1.5 w-full max-w-[165px] rounded-full bg-slate-200" aria-label={"Payment progress "+progress+"%"}>
+                      <div className={"h-1.5 rounded-full "+status.bar} style={{width:progress+"%"}}/>
+                    </div>
+                  </td>
+                  <td className="px-3 text-right font-medium tabular-nums">{ghs(b.charged)}</td>
+                  <td className="px-3 text-right font-semibold tabular-nums text-emerald-700">{ghs(b.paid)}</td>
+                  <td className={"px-3 text-right font-bold tabular-nums "+(b.outstanding>0?"text-rose-700":"text-slate-900")}>{ghs(b.outstanding)}</td>
+                  <td className="rounded-r-xl px-3 text-right"><span className={"inline-flex whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-bold ring-1 "+status.classes}>{status.label}</span></td>
                 </tr>;
               })}</tbody>
             </table>
-            {!searchable.length&&<Empty>No active learners found.</Empty>}
+            {!searchable.length&&<Empty>No active students match your search.</Empty>}
           </div>
         </section>
         <section className="surface rounded-2xl p-5">
-          <h2 className="text-lg font-bold">Learner charge history</h2>
-          {!selected?<p className="mt-4 text-sm text-muted">Select a learner to see their item sales, assigned fees and outstanding charges.</p>:
+          <h2 className="text-lg font-bold">Student charges and corrections</h2>
+          <p className="mt-1 text-xs leading-5 text-muted">Select a student to review what they owe, what has been paid, and any fee that needs correcting.</p>
+          {!selected?<p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Select a student on the left to see individual charges.</p>:
             <div className="mt-4 space-y-3">
-              {selectedCharges.map(c=><div key={c.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{c.description}</p><p className="mt-1 text-xs text-muted">{c.academic_year} · Term {c.term} · {c.category}</p></div>
-                <div className="text-right"><strong className="tabular-nums">{ghs(c.amount)}</strong>
-                  {c.category!=="ITEM"&&<button className="mt-2 block text-xs font-semibold text-red-700 hover:underline"
-                    disabled={busy} onClick={()=>void voidCharge(c)}>Correct / void charge</button>}
-                </div></div>
-              </div>)}
-              {!selectedCharges.length&&<Empty>No charges have been assigned yet.</Empty>}
+              {selectedCharges.map(c=>{
+                const paid=chargePaid(c.id);
+                const remaining=Math.max(0,Number(c.amount)-paid);
+                return <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div><p className="font-bold text-slate-900">{c.description}</p>
+                      <p className="mt-1 text-xs text-slate-500">{c.academic_year} · Term {c.term} · {c.category}</p></div>
+                    <strong className="whitespace-nowrap text-sm tabular-nums">{ghs(Number(c.amount))}</strong>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Paid: {ghs(paid)}</span>
+                    <span className={remaining>0?"font-bold text-rose-700":"font-bold text-emerald-700"}>Due: {ghs(remaining)}</span>
+                  </div>
+                  {c.category!=="ITEM"&&<button type="button" className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+                      onClick={()=>{setCorrectingCharge(c);setCorrectionReason("");}}><AlertCircle size={14}/> Void / correct this fee</button>}
+                </div>;
+              })}
+              {!selectedCharges.length&&<Empty>No charges assigned to this student.</Empty>}
             </div>}
         </section>
       </div>}
