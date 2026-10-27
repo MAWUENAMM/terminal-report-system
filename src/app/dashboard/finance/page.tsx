@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownToLine, BellRing, BookOpen, Check, CircleDollarSign,
   ClipboardList, CreditCard, History, Package, Plus, RefreshCcw,
@@ -66,6 +66,8 @@ export default function SchoolFinance() {
   const [itemDraft,setItemDraft]=useState<ItemDraft|null>(null);
   const [saleItem,setSaleItem]=useState("");
   const [saleQty,setSaleQty]=useState("1");
+  const paymentRequestKey=useRef<string|null>(null);
+  const saleRequestKey=useRef<string|null>(null);
 
   const load=useCallback(async()=>{
     if(!authorized)return;
@@ -166,11 +168,14 @@ export default function SchoolFinance() {
     if(Math.round(Number(paymentAmount)*100)>Math.round(selectedBalance.outstanding*100)){
       return setError("The payment exceeds the student's current outstanding amount.");
     }
+    paymentRequestKey.current ||= crypto.randomUUID();
     await perform(async()=>{
       await invoke("finance_record_payment",{
         p_student_id:selected.id,p_amount:Number(paymentAmount),
-        p_method:paymentMethod,p_reference:paymentReference.trim(),p_note:paymentNote.trim()
+        p_method:paymentMethod,p_reference:paymentReference.trim(),p_note:paymentNote.trim(),
+        p_request_key:paymentRequestKey.current
       });
+      paymentRequestKey.current=null;
       setPaymentAmount("");setPaymentReference("");setPaymentNote("");
       setView("payments");
     },"Payment recorded and receipt available. Finance team notified.");
@@ -225,10 +230,13 @@ export default function SchoolFinance() {
   async function sell(event:FormEvent){
     event.preventDefault();
     if(!selected)return setError("Select a learner before selling an item.");
+    saleRequestKey.current ||= crypto.randomUUID();
     await perform(async()=>{
       await invoke("finance_sell_item",{
-        p_item_id:saleItem,p_student_id:selected.id,p_quantity:Number(saleQty)
+        p_item_id:saleItem,p_student_id:selected.id,p_quantity:Number(saleQty),
+        p_request_key:saleRequestKey.current
       });
+      saleRequestKey.current=null;
       setSaleQty("1");setSaleItem("");
     },"Sale recorded, stock updated and student account charged.");
   }
@@ -298,7 +306,7 @@ export default function SchoolFinance() {
               </div>
             </Field>
             <Field label="Selected learner">
-              <select className="field" value={selectedStudent} onChange={e=>setSelectedStudent(e.target.value)}>
+              <select className="field" value={selectedStudent} onChange={e=>{setSelectedStudent(e.target.value);paymentRequestKey.current=null;saleRequestKey.current=null;}}>
                 <option value="">Choose a learner</option>
                 {searchable.map(s=><option key={s.id} value={s.id}>{fullName(s)} · {s.admission_number}</option>)}
               </select>
@@ -382,10 +390,10 @@ export default function SchoolFinance() {
           <h2 className="text-lg font-bold">Record student payment</h2>
           <p className="mt-2 text-sm text-muted">Payments automatically settle the oldest outstanding charges first. Record the actual payment method and reference.</p>
           <form onSubmit={pay} className="mt-5 space-y-4">
-            <Field label="Amount received (GH₵)"><input type="number" className="field" min="0.01" step="0.01" required value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)}/></Field>
-            <Field label="Payment mode"><select className="field" value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>{[["CASH","Cash"],["MOMO","Mobile Money"],["BANK","Bank transfer"],["CHEQUE","Cheque"],["OTHER","Other"]].map(([key,val])=><option key={key} value={key}>{val}</option>)}</select></Field>
-            <Field label="Reference / transaction ID"><input className="field" maxLength={120} value={paymentReference} onChange={e=>setPaymentReference(e.target.value)} placeholder="MoMo or bank reference (if any)"/></Field>
-            <Field label="Payment notes"><textarea className="field" maxLength={500} value={paymentNote} onChange={e=>setPaymentNote(e.target.value)} rows={2} placeholder="Optional internal notes"/></Field>
+            <Field label="Amount received (GH₵)"><input type="number" className="field" min="0.01" step="0.01" required value={paymentAmount} onChange={e=>{setPaymentAmount(e.target.value);paymentRequestKey.current=null;}}/></Field>
+            <Field label="Payment mode"><select className="field" value={paymentMethod} onChange={e=>{setPaymentMethod(e.target.value);paymentRequestKey.current=null;}}>{[["CASH","Cash"],["MOMO","Mobile Money"],["BANK","Bank transfer"],["CHEQUE","Cheque"],["OTHER","Other"]].map(([key,val])=><option key={key} value={key}>{val}</option>)}</select></Field>
+            <Field label="Reference / transaction ID"><input className="field" maxLength={120} value={paymentReference} onChange={e=>{setPaymentReference(e.target.value);paymentRequestKey.current=null;}} placeholder="MoMo or bank reference (if any)"/></Field>
+            <Field label="Payment notes"><textarea className="field" maxLength={500} value={paymentNote} onChange={e=>{setPaymentNote(e.target.value);paymentRequestKey.current=null;}} rows={2} placeholder="Optional internal notes"/></Field>
             <button className="btn-primary w-full" disabled={busy||!selected||selectedBalance.outstanding<=0}><CreditCard size={16}/>Record payment</button>
           </form>
         </section>
@@ -431,8 +439,8 @@ export default function SchoolFinance() {
         <section className="surface rounded-2xl p-5">
           <h2 className="text-lg font-bold">Sell an item to a learner</h2>
           <form onSubmit={sell} className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px_auto] sm:items-end">
-            <Field label="Item"><select className="field" value={saleItem} required onChange={e=>setSaleItem(e.target.value)}><option value="">Choose item</option>{items.filter(i=>i.active&&i.stock_quantity>0).map(i=><option key={i.id} value={i.id}>{i.name} · {ghs(i.unit_price)} · {i.stock_quantity} remaining</option>)}</select></Field>
-            <Field label="Quantity"><input className="field" type="number" min="1" step="1" value={saleQty} onChange={e=>setSaleQty(e.target.value)} required/></Field>
+            <Field label="Item"><select className="field" value={saleItem} required onChange={e=>{setSaleItem(e.target.value);saleRequestKey.current=null;}}><option value="">Choose item</option>{items.filter(i=>i.active&&i.stock_quantity>0).map(i=><option key={i.id} value={i.id}>{i.name} · {ghs(i.unit_price)} · {i.stock_quantity} remaining</option>)}</select></Field>
+            <Field label="Quantity"><input className="field" type="number" min="1" step="1" value={saleQty} onChange={e=>{setSaleQty(e.target.value);saleRequestKey.current=null;}} required/></Field>
             <button className="btn-primary" disabled={busy||!selected||!saleItem}><ShoppingBag size={16}/>Record sale</button>
           </form>
           <p className="mt-3 text-xs text-muted">Sales reduce stock immediately and add an item charge to the learner. Record payment separately to issue a receipt.</p>
