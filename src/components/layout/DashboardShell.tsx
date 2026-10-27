@@ -558,6 +558,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {process.env.NEXT_PUBLIC_EDUREPORT_TESTING === "true" && (
+              <span className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-[10px] font-bold text-amber-900">
+                TEST ONLY
+              </span>
+            )}
             <button
               className="dashboard-icon-button rounded-xl border border-transparent p-2.5 text-muted transition hover:border-slate-200 hover:bg-slate-50"
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
