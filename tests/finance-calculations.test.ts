@@ -52,7 +52,8 @@ test("receipt amount in words includes currency and pesewas",()=>{
   assert.equal(amountInWords(0),"zero Ghana cedis only");
   assert.equal(amountInWords(82.5),"eighty two Ghana cedis and fifty pesewas");
   assert.ok(amountInWords(1200).includes("one thousand two hundred"));
-  assert.ok(ghs(400).includes("400"));
+  assert.equal(ghs(400), "GHS 400.00");
+  assert.equal(ghs(2000.50), "GHS 2,000.50");
 });
 
 test("receipt watermark graphics state uses jsPDF GState, not a plain object",()=>{
