@@ -106,4 +106,31 @@ select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-00000000
 select pg_temp.expect((select count(*)=3 from public.finance_charges),'admin sees all own-school charges');
 select pg_temp.expect((select count(*)>=4 from public.finance_events),'admin receives audit events');
 
+-- A fee explicitly targeting one learner must never affect their classmates.
+insert into public.finance_fees(id,school_id,academic_year,term,name,category,amount,target_student_id,created_by)
+values ('a4000000-0000-4000-8000-000000000011',
+ 'a0000000-0000-4000-8000-000000000001','2026/2027',1,
+ 'Single learner lab materials','OTHER',45,
+ 'a3000000-0000-4000-8000-000000000002',
+ 'a1000000-0000-4000-8000-000000000001');
+select pg_temp.expect(public.finance_apply_fee('a4000000-0000-4000-8000-000000000011')=1,
+ 'individual learner fee applies once');
+select pg_temp.expect(public.finance_apply_fee('a4000000-0000-4000-8000-000000000011')=0,
+ 'individual learner fee cannot be duplicated');
+select pg_temp.expect((select count(*)=1 from public.finance_charges
+ where fee_id='a4000000-0000-4000-8000-000000000011'
+ and student_id='a3000000-0000-4000-8000-000000000002'),
+ 'individual fee never hits classmate');
+select pg_temp.denied($q$insert into public.finance_fees(school_id,academic_year,term,class_id,target_student_id,name,category,amount,created_by)
+values('a0000000-0000-4000-8000-000000000001','2026/2027',1,
+ 'a2000000-0000-4000-8000-000000000001',
+ 'a3000000-0000-4000-8000-000000000002',
+ 'Illegal dual scope','FEE',5,'a1000000-0000-4000-8000-000000000001')$q$,
+ 'class and specific student cannot both be targeted');
+select pg_temp.denied($q$insert into public.finance_fees(school_id,academic_year,term,target_student_id,name,category,amount,created_by)
+values('a0000000-0000-4000-8000-000000000001','2026/2027',1,
+ 'a3000000-0000-4000-8000-000000000003','Wrong school','FEE',5,
+ 'a1000000-0000-4000-8000-000000000001')$q$,
+ 'specific fee cannot target student from another school');
+
 rollback;
