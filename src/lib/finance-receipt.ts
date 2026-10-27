@@ -17,8 +17,9 @@ export type FinanceCharge = {
 export type FinanceAllocation = {
   id: string; payment_id: string; charge_id: string; amount: number;
 };
-export const ghs = (amount: number) =>
-  new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(amount);
+export const ghs = (amount: number) => "GHS " + Number(amount || 0).toLocaleString("en-GB", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2
+});
 export const money = (amount: number) => Math.round((Number(amount) + Number.EPSILON) * 100);
 export const dueFor = (studentId: string, charges: FinanceCharge[], payments: FinancePayment[], allocations: FinanceAllocation[]) => {
   const valid = new Set(payments.filter(p => p.student_id === studentId && !p.voided_at).map(p => p.id));
@@ -69,6 +70,7 @@ export function amountInWords(value: number) {
     (pesewas % 100 ? " and " + underThousand(pesewas % 100) + " pesewas" : " only");
 }
 
+import autoTable from "jspdf-autotable";
 export async function downloadFinanceReceipt({
   school, student, cls, payment, charges, allocations, issuedBy, balance
 }: {
@@ -77,127 +79,116 @@ export async function downloadFinanceReceipt({
   allocations: FinanceAllocation[]; issuedBy: string; balance: number;
 }) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const dark: [number,number,number] = [12, 39, 49];
-  const green: [number,number,number] = [11, 108, 76];
-  const gold: [number,number,number] = [237, 190, 56];
-  const studentName = [student.first_name, student.other_names, student.last_name].filter(Boolean).join(" ");
-  const w = 210;
-  const text = (str: string, x: number, y: number, size = 9, color = dark, bold = false) => {
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.setFontSize(size);
-    doc.setTextColor(...color);
-    doc.text(str, x, y);
+  type Ink = [number,number,number];
+  const green: Ink = [12,91,68], navy: Ink = [25,43,50], gold: Ink = [226,177,61];
+  const mint: Ink = [234,247,239], grey: Ink = [103,119,120];
+  const clean = (value: string) => String(value||"").replace(/[^\x20-\x7E]/g," ").replace(/\s+/g," ").trim();
+  const label = (value:string,x:number,y:number,size=9,color:Ink=navy,bold=false) => {
+    doc.setFont("helvetica",bold?"bold":"normal");
+    doc.setFontSize(size);doc.setTextColor(...color);doc.text(clean(value),x,y);
   };
-  const block = (x: number, y: number, bw: number, bh: number, color: [number,number,number]) => {
-    doc.setFillColor(...color);
-    doc.roundedRect(x,y,bw,bh,2.5,2.5,"F");
+  const right = (value:string,x:number,y:number,size=9,color:Ink=navy,bold=false) => {
+    doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(...color);
+    doc.text(clean(value),x,y,{align:"right"});
   };
-
-  // Only signed school assets are read, using the same resolver as learner reports.
-  const [logoUrl, photoUrl] = await Promise.all([
-    resolveSchoolAssetUrl(school.logo_url), resolveSchoolAssetUrl(student.photo_url)
+  const box = (x:number,y:number,w:number,h:number,color:Ink) => {
+    doc.setFillColor(...color);doc.roundedRect(x,y,w,h,3,3,"F");
+  };
+  const fit = (value:string,limit:number,max=15) => {
+    doc.setFont("helvetica","bold");
+    for(let size=max;size>=9;size-=.5){doc.setFontSize(size);if(doc.getTextWidth(clean(value))<=limit)return size;}
+    return 9;
+  };
+  const [logoUrl,photoUrl] = await Promise.all([
+    resolveSchoolAssetUrl(school.logo_url),resolveSchoolAssetUrl(student.photo_url)
   ]);
-  let logo: string | null = null, photo: string | null = null;
-  if (logoUrl) try { logo = await imageUrlToPngDataUrl(logoUrl); } catch { /* branding is optional */ }
-  if (photoUrl) try { photo = await imageUrlToPngDataUrl(photoUrl); } catch { /* fallback frame */ }
-
-  doc.setDrawColor(...green);
-  doc.setLineWidth(1.1);
-  doc.rect(7,7,196,283);
-  doc.setLineWidth(0.3);
-  doc.setDrawColor(...gold);
-  doc.rect(9,9,192,279);
-  if (logo) {
+  let logo:string|null=null,photo:string|null=null;
+  if(logoUrl)try{logo=await imageUrlToPngDataUrl(logoUrl);}catch{ /* optional */ }
+  if(photoUrl)try{photo=await imageUrlToPngDataUrl(photoUrl);}catch{ /* optional */ }
+  const schoolName=clean(school.name).toUpperCase();
+  const studentName=[student.first_name,student.other_names,student.last_name].filter(Boolean).join(" ");
+  const receivedAt=new Date(payment.created_at);
+  const paymentDate=Number.isNaN(receivedAt.getTime())?"Unknown date":receivedAt.toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
+  const printedAt=new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
+  // Genuine branded letterhead. All currency is ASCII 'GHS' for consistent PDF rendering.
+  doc.setFillColor(...green);doc.rect(0,0,210,48,"F");
+  doc.setFillColor(...gold);doc.rect(0,48,210,2.5,"F");
+  box(15,12,28,28,[255,255,255]);
+  if(logo) doc.addImage(logo,"PNG",18,15,22,22);
+  else label("EDU",20,30,12,green,true);
+  label(schoolName,49,22,fit(schoolName,148),[255,255,255],true);
+  label([school.address,school.district,school.region].filter(Boolean).join(" | ").slice(0,85),49,29,7,[218,238,228]);
+  label([school.phone,school.email].filter(Boolean).join(" | ").slice(0,85),49,35,7,[218,238,228]);
+  label("PAYMENT RECEIPT",16,64,16,green,true);
+  label("OFFICIAL SCHOOL FINANCE DOCUMENT",16,70,7.4,grey,true);
+  right(payment.receipt_number,194,63,9,navy,true);
+  right(paymentDate,194,70,8,grey);
+  box(15,79,180,31,green);
+  label("AMOUNT RECEIVED",21,88,8,[224,245,233],true);
+  label(ghs(Number(payment.amount)),21,101,20,[255,255,255],true);
+  box(153,85,35,12,payment.voided_at?[167,54,44]:[231,246,236]);
+  right(payment.voided_at?"VOIDED":"RECEIVED",184,92.5,10,payment.voided_at?[255,255,255]:green,true);
+  box(15,117,180,36,[245,249,247]);
+  label("STUDENT DETAILS",21,125,7.5,green,true);
+  label(studentName,21,135,fit(studentName,129,14),navy,true);
+  label("Admission No: "+student.admission_number,21,143,8,grey);
+  label("Class: "+(cls?.name||"Not specified"),21,149,8,grey);
+  if(photo)doc.addImage(photo,"PNG",163,120,25,29);
+  else{doc.setDrawColor(211,223,218);doc.roundedRect(163,120,25,29,2,2,"S");label("PHOTO",166,135,6,grey);}
+  if(logo){
     doc.saveGraphicsState();
-    try {
-      doc.setGState(new GState({ opacity: 0.065 }));
-      doc.addImage(logo, "PNG", 53, 88, 104, 104);
-    } finally {
-      doc.restoreGraphicsState();
-    }
-    doc.addImage(logo, "PNG", 15, 16, 24, 24);
-  } else {
-    block(15,16,24,24,green);
-    text("EDU",19,30,10,[255,255,255],true);
+    try{doc.setGState(new GState({opacity:.065}));doc.addImage(logo,"PNG",62,171,86,86);}
+    finally{doc.restoreGraphicsState();}
   }
-  doc.setFont("helvetica","bold");
-  const name = school.name.toUpperCase();
-  let nameSize = 15;
-  while(nameSize>9 && doc.getTextWidth(name)>148) {
-    nameSize -= .5; doc.setFontSize(nameSize);
-  }
-  text(name, 45, 23, nameSize, green, true);
-  const contact = [school.address,school.district,school.region].filter(Boolean).join(" · ");
-  doc.setFontSize(7);
-  text(contact.slice(0,92),45,29,7,dark);
-  text([school.phone,school.email].filter(Boolean).join(" · ").slice(0,95),45,34,7,dark);
-  doc.setFillColor(...green);
-  doc.rect(12,45,186,25,"F");
-  text("OFFICIAL PAYMENT RECEIPT",18,56,13,[255,255,255],true);
-  text(ghs(Number(payment.amount)),18,65,15,gold,true);
-  doc.setFont("helvetica","bold");
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(8);
-  doc.text(payment.receipt_number,192,56,{align:"right"});
-  doc.setFontSize(7);
-  doc.text(new Date(payment.created_at).toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"}),192,64,{align:"right"});
-
-  block(14,76,182,39,[244,248,246]);
-  text("RECEIVED FROM",19,83,7,green,true);
-  text(studentName.slice(0,70),19,92,13,dark,true);
-  text("Admission: " + student.admission_number,19,100,8);
-  text("Class: " + (cls?.name || "—"),19,107,8);
-  if (photo) doc.addImage(photo,"PNG",170,80,20,27);
-  else {
-    doc.setDrawColor(186,204,196);
-    doc.rect(170,80,20,27);
-    text("PHOTO",173,95,6,[119,136,128]);
-  }
-
-  text("PAYMENT BREAKDOWN",16,128,9,green,true);
-  doc.setFillColor(...dark);
-  doc.rect(15,133,180,10,"F");
-  text("DESCRIPTION",19,139.5,8,[255,255,255],true);
-  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(255,255,255);
-  doc.text("AMOUNT",189,139.5,{align:"right"});
-  let y=150;
-  const own = allocations.filter(a=>a.payment_id===payment.id);
-  for(const allocation of own.slice(0,9)){
-    const charge=charges.find(c=>c.id===allocation.charge_id);
-    if(!charge)continue;
-    text(charge.description.slice(0,72),19,y,8);
-    doc.setFontSize(8); doc.setTextColor(...dark);
-    doc.text(ghs(Number(allocation.amount)),189,y,{align:"right"});
-    doc.setDrawColor(220,231,226); doc.line(18,y+3,191,y+3);
-    y+=10;
-  }
-  if(own.length>9) {
-    text("Additional fee allocations are recorded in the finance ledger.",19,y,7);
-    y+=8;
-  }
-  y=Math.max(169,y+6);
-  block(15,y,180,23,[234,245,239]);
-  text("TOTAL RECEIVED",20,y+8,8,green,true);
-  text(ghs(Number(payment.amount)),20,y+18,15,green,true);
-  doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...dark);
-  doc.text("Current outstanding: "+ghs(balance),189,y+13,{align:"right"});
-  y+=32;
-  text("Amount in words:",16,y,8,green,true);
-  const words=doc.splitTextToSize(amountInWords(Number(payment.amount)),175);
-  doc.setFontSize(8);doc.setTextColor(...dark);doc.text(words.slice(0,2),16,y+6);
+  label("PAYMENT BREAKDOWN",16,162,9.5,green,true);
+  const own=allocations.filter(a=>a.payment_id===payment.id);
+  const lines=own.map(a=>{
+    const charge=charges.find(c=>c.id===a.charge_id);
+    return [clean(charge?.description||"School charge"),charge?charge.academic_year+" | Term "+charge.term:"-",
+      ghs(Number(a.amount))];
+  });
+  autoTable(doc,{
+    startY:168,margin:{left:15,right:15,bottom:47},
+    head:[["DESCRIPTION","ACADEMIC PERIOD","AMOUNT"]],
+    body:lines.length?lines:[["Payment (allocation detail unavailable)","-",ghs(Number(payment.amount))]],
+    theme:"grid",
+    headStyles:{fillColor:[25,43,50],textColor:[255,255,255],fontStyle:"bold",minCellHeight:10},
+    styles:{font:"helvetica",fontSize:8.4,cellPadding:3.1,textColor:[25,43,50],lineColor:[217,230,224],lineWidth:.12},
+    alternateRowStyles:{fillColor:[247,251,248]},
+    columnStyles:{0:{cellWidth:82},1:{cellWidth:52},2:{cellWidth:46,halign:"right",fontStyle:"bold"}}
+  });
+  let y=(doc as jsPDF & {lastAutoTable?:{finalY:number}}).lastAutoTable?.finalY||184;
+  if(y>218){doc.addPage();y=24;}
+  y+=7;
+  box(15,y,180,31,mint);
+  label("TOTAL RECEIVED",21,y+9,8,green,true);
+  label(ghs(Number(payment.amount)),21,y+23,16,green,true);
+  right("BALANCE AT TIME OF PRINT",189,y+9,7,grey,true);
+  right(ghs(balance),189,y+22,11,navy,true);
+  y+=39;
+  label("AMOUNT IN WORDS",17,y,7,green,true);
+  const words=doc.splitTextToSize(clean(amountInWords(Number(payment.amount))),174);
+  doc.setFont("helvetica","bold");doc.setFontSize(8.4);doc.setTextColor(...navy);
+  doc.text(words,17,y+7);
+  y+=Math.max(14,words.length*5+8);
+  if(y>237){doc.addPage();y=26;}
+  label("PAYMENT METHOD",17,y+5,7,grey,true);label(payment.method,17,y+12,9,navy,true);
+  label("TRANSACTION REFERENCE",107,y+5,7,grey,true);
+  label((payment.reference||"Not supplied").slice(0,40),107,y+12,8.5,navy);
   y+=19;
-  text("Payment method: " + payment.method,16,y,8);
-  text("Payment reference: " + (payment.reference||"Not supplied").slice(0,52),16,y+7,8);
-  text("Recorded by: " + issuedBy.slice(0,60),16,y+14,8);
-  const sigY=267;
-  doc.setDrawColor(...green);
-  doc.line(17,sigY,90,sigY);doc.line(123,sigY,192,sigY);
-  text("School finance / cashier",18,sigY+5,7);
-  text("Authorized school stamp",125,sigY+5,7);
-  if(payment.voided_at){
-    doc.setFontSize(44); doc.setTextColor(198,48,48);
-    doc.text("VOID",105,155,{align:"center",angle:25});
+  label("RECORDED BY",17,y+5,7,grey,true);label(issuedBy.slice(0,50),17,y+12,8.5,navy,true);
+  label("PRINTED",117,y+5,7,grey,true);label(printedAt,117,y+12,8,navy);
+  const pages=doc.internal.getNumberOfPages();
+  for(let page=1;page<=pages;page++){
+    doc.setPage(page);doc.setDrawColor(...gold);doc.setLineWidth(.45);doc.line(15,282,195,282);
+    label("EDUREPORT  |  OFFICIAL SCHOOL PAYMENT RECORD",15,287,6.5,grey,true);
+    right("Page "+page+" of "+pages+"  |  "+payment.receipt_number,195,287,6.5,grey);
+    if(payment.voided_at){
+      doc.saveGraphicsState();
+      try{doc.setGState(new GState({opacity:.34}));doc.setFont("helvetica","bold");doc.setFontSize(43);
+        doc.setTextColor(174,48,44);doc.text("VOIDED",108,203,{align:"center",angle:25});}
+      finally{doc.restoreGraphicsState();}
+    }
   }
-  text("Generated from EduReport · Retain for your records · " + payment.receipt_number,16,284,6,[94,113,104]);
-  doc.save("receipt-" + payment.receipt_number.replace(/[^a-zA-Z0-9-]/g,"") + ".pdf");
+  doc.save("receipt-"+payment.receipt_number.replace(/[^a-zA-Z0-9-]/g,"")+".pdf");
 }
