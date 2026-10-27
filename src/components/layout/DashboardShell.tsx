@@ -9,6 +9,7 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  Wallet,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -228,6 +229,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       label: "School settings",
       icon: Settings,
       show: admin,
+    },
+    {
+      path: "/dashboard/finance",
+      label: "School finance",
+      icon: Wallet,
+      show: admin || w.profile.role === "ACCOUNTANT",
     },
     {
       path: "/dashboard/requests",
