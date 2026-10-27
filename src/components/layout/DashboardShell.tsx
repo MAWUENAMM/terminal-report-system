@@ -105,8 +105,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (w.profile.role !== "ADMIN" && w.profile.role !== "ACCOUNTANT") {
-      setFinanceEvents([]);
-      setFinanceReadIds([]);
+      void Promise.resolve().then(() => {
+        setFinanceEvents([]);
+        setFinanceReadIds([]);
+      });
       return;
     }
     let active=true;
@@ -219,19 +221,19 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       path: "/dashboard",
       label: "Overview",
       icon: LayoutDashboard,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/students",
       label: "Learners",
       icon: Users,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/classes",
       label: "Classes",
       icon: School,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/subjects",
