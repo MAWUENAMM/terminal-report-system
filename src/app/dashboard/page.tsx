@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BookOpen,
@@ -24,6 +26,10 @@ const termName = (term: number) =>
 
 export default function Dashboard() {
   const { data: w } = useWorkspace();
+  const router = useRouter();
+  useEffect(() => {
+    if(w.profile.role === "ACCOUNTANT") router.replace("/dashboard/finance");
+  },[w.profile.role,router]);
 
   const term = w.terms.find(
     (item) =>
@@ -184,6 +190,8 @@ export default function Dashboard() {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     )
     .slice(0, 4);
+
+  if(w.profile.role === "ACCOUNTANT") return <p className="p-6 text-sm text-muted">Opening School Finance…</p>;
 
   return (
     <div className="space-y-6">
