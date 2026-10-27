@@ -49,7 +49,8 @@ select pg_temp.expect(public.finance_apply_fee('a4000000-0000-4000-8000-00000000
 select pg_temp.expect(public.finance_apply_fee('a4000000-0000-4000-8000-000000000001')=0,'repeat apply does not duplicate');
 select pg_temp.expect((select count(*)=2 from public.finance_charges),'both students have one charge');
 select pg_temp.expect((select status='APPLIED' from public.finance_fees where id='a4000000-0000-4000-8000-000000000001'),'fee status applied');
-select pg_temp.denied($q$update public.finance_fees set amount=500 where id='a4000000-0000-4000-8000-000000000001'$q$,'applied fee amount update');
+-- RLS UPDATE can return zero rows without an error; assert unchanged state instead.
+update public.finance_fees set amount=500 where id='a4000000-0000-4000-8000-000000000001';
 -- RLS can silently skip blocked rows: always confirm the amount remains unchanged.
 select pg_temp.expect((select amount=100 from public.finance_fees where id='a4000000-0000-4000-8000-000000000001'),'applied fee remains unchanged');
 
