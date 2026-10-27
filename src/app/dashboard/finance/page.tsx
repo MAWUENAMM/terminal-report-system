@@ -18,7 +18,7 @@ import {
 
 type Fee = {
   id:string;school_id:string;academic_year:string;term:number;class_id:string|null;
-  name:string;category:"FEE"|"OTHER";amount:number;status:"DRAFT"|"APPLIED";created_at:string;
+  name:string;category:"FEE"|"OTHER";target_student_id:string|null;amount:number;status:"DRAFT"|"APPLIED";created_at:string;
 };
 type Item = {
   id:string;school_id:string;name:string;description:string;unit_price:number;
@@ -58,9 +58,13 @@ export default function SchoolFinance() {
   const [feeCategory,setFeeCategory]=useState<"FEE"|"OTHER">("FEE");
   const [feeAmount,setFeeAmount]=useState("");
   const [feeClass,setFeeClass]=useState("");
+  const [feeScope,setFeeScope]=useState<"ALL"|"CLASS"|"STUDENT">("ALL");
+  const [feeStudent,setFeeStudent]=useState("");
   const [feeTerm,setFeeTerm]=useState(String(w.school.current_term));
   const [feeYear,setFeeYear]=useState(w.school.academic_year);
   const [feeEditing,setFeeEditing]=useState<Fee|null>(null);
+  const [correctingCharge,setCorrectingCharge]=useState<FinanceCharge|null>(null);
+  const [correctionReason,setCorrectionReason]=useState("");
   const [paymentAmount,setPaymentAmount]=useState("");
   const [paymentMethod,setPaymentMethod]=useState("CASH");
   const [paymentReference,setPaymentReference]=useState("");
@@ -139,18 +143,25 @@ export default function SchoolFinance() {
   async function createFee(event:FormEvent){
     event.preventDefault();
     if(!moneyInput(feeAmount))return setError("Enter a valid positive fee amount with up to two decimals.");
+    if(feeScope==="CLASS"&&!feeClass)return setError("Select the class to charge.");
+    if(feeScope==="STUDENT"&&!feeStudent)return setError("Select the student to charge.");
     await perform(async()=>{
       const {error}=await browserClient().from("finance_fees").insert({
         school_id:w.school.id,academic_year:feeYear.trim(),term:Number(feeTerm),
-        class_id:feeClass||null,name:feeName.trim(),category:feeCategory,amount:Number(feeAmount),
+        class_id:feeScope==="CLASS"?feeClass:null,
+        target_student_id:feeScope==="STUDENT"?feeStudent:null,
+        name:feeName.trim(),category:feeCategory,amount:Number(feeAmount),
         created_by:w.profile.id
       });
       if(error)throw new Error(error.message);
-      setFeeName("");setFeeAmount("");setFeeCategory("FEE");
+      setFeeName("");setFeeAmount("");setFeeCategory("FEE");setFeeScope("ALL");setFeeStudent("");setFeeClass("");
     },"Fee draft created. Review it before applying to learners.");
   }
   async function applyFee(fee:Fee){
-    if(!confirm("Apply "+fee.name+" ("+ghs(fee.amount)+") to all eligible active learners? Applied fees cannot be edited or deleted. Clicking Apply again will not duplicate student charges."))return;
+    const scope=fee.target_student_id?
+      (students.find(s=>s.id===fee.target_student_id)?fullName(students.find(s=>s.id===fee.target_student_id)!):"the selected learner"):
+      fee.class_id?(w.classes.find(c=>c.id===fee.class_id)?.name||"the selected class"):"ALL active learners";
+    if(!confirm("Apply "+fee.name+" ("+ghs(fee.amount)+") to "+scope+"? This creates real charges in the TEST school. The draft becomes locked; duplicate charges are prevented."))return;
     await perform(async()=>{
       const count=await invoke<number>("finance_apply_fee",{p_fee_id:fee.id});
       setError(count===0?"No new learner charges were needed. Existing assignments were preserved.":"");
@@ -174,12 +185,17 @@ export default function SchoolFinance() {
       if(error)throw new Error(error.message);
     },"Draft removed.");
   }
-  async function voidCharge(charge:FinanceCharge){
-    const reason=prompt("Explain why this charge must be voided (8–500 characters). Recorded payments must be reversed first; inventory sales require a separate return process.");
-    if(!reason)return;
-    await perform(async()=>{
-      await invoke("finance_void_charge",{p_charge_id:charge.id,p_reason:reason});
-    },"Charge voided. The original record remains in the audit trail.");
+  async function voidCharge(event:FormEvent){
+    event.preventDefault();
+    if(!correctingCharge)return;
+    if(correctionReason.trim().length<8||correctionReason.trim().length>500) {
+      setError("Enter an explanation between 8 and 500 characters.");
+      return;
+    }
+    const ok=await run(async()=>{
+      await invoke("finance_void_charge",{p_charge_id:correctingCharge.id,p_reason:correctionReason.trim()});
+    },"Charge cancelled with an audit entry. Student balance updated.");
+    if(ok){setCorrectingCharge(null);setCorrectionReason("");await load();}
   }
   async function pay(event:FormEvent){
     event.preventDefault();
@@ -382,7 +398,20 @@ export default function SchoolFinance() {
             <Field label="Amount (GH₵)"><input className="field" required type="number" min="0.01" step="0.01" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
             <Field label="Academic year"><input className="field" required value={feeYear} onChange={e=>setFeeYear(e.target.value)} maxLength={20}/></Field>
             <Field label="Term"><select className="field" value={feeTerm} onChange={e=>setFeeTerm(e.target.value)}>{[1,2,3].map(t=><option key={t} value={t}>Term {t}</option>)}</select></Field>
-            <Field label="Applies to"><select className="field" value={feeClass} onChange={e=>setFeeClass(e.target.value)}><option value="">All active learners</option>{w.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Who should receive this charge?">
+              <select className="field" value={feeScope} onChange={e=>setFeeScope(e.target.value as "ALL"|"CLASS"|"STUDENT")}>
+                <option value="ALL">All active students</option>
+                <option value="CLASS">One class</option>
+                <option value="STUDENT">One specific student</option>
+              </select>
+            </Field>
+            {feeScope==="CLASS"&&<Field label="Choose class"><select className="field" required value={feeClass} onChange={e=>setFeeClass(e.target.value)}>
+              <option value="">Select class…</option>{w.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></Field>}
+            {feeScope==="STUDENT"&&<Field label="Choose student"><select className="field" required value={feeStudent} onChange={e=>setFeeStudent(e.target.value)}>
+              <option value="">Select student…</option>{students.map(st=><option key={st.id} value={st.id}>{fullName(st)} · {st.admission_number}</option>)}
+            </select></Field>}
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Charges are saved as a draft first. <strong>Apply fees</strong> is the separate, final step that assigns the charge to the chosen students.</div>
             <button className="btn-primary w-full" disabled={busy}><Plus size={16}/>Save fee draft</button>
           </form>
         </section>
@@ -391,13 +420,13 @@ export default function SchoolFinance() {
           <p className="mt-1 text-xs text-muted">Applying a fee adds a term charge to each eligible active learner exactly once.</p>
           <div className="mt-5 space-y-3">{[...fees].reverse().map(f=><div key={f.id} className="rounded-xl border border-slate-200 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><p className="font-bold">{f.name}</p><p className="mt-1 text-xs text-muted">{f.academic_year} · Term {f.term} · {f.category==="OTHER"?"Custom charge":"School fee"} · {w.classes.find(c=>c.id===f.class_id)?.name||"All classes"}</p>
+              <div><p className="font-bold">{f.name}</p><p className="mt-1 text-xs text-muted">{f.academic_year} · Term {f.term} · {f.category==="OTHER"?"Custom charge":"School fee"} · {f.target_student_id?("Student: "+(students.find(st=>st.id===f.target_student_id)?fullName(students.find(st=>st.id===f.target_student_id)!):"Selected student")):(f.class_id?(w.classes.find(c=>c.id===f.class_id)?.name||"Selected class"):"All classes")}</p>
                 <span className={"mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase "+(f.status==="APPLIED"?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-800")}>{f.status}</span>
               </div>
               <strong className="text-lg">{ghs(f.amount)}</strong>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button className="btn-primary !py-2" disabled={busy} onClick={()=>void applyFee(f)}>{f.status==="APPLIED"?"Apply to newly eligible learners":"Apply fees"}</button>
+              <button className="btn-primary !py-2" disabled={busy} onClick={()=>void applyFee(f)}>{f.status==="APPLIED"?"Apply to newly eligible students":"Apply fees"}</button>
               {f.status==="DRAFT"&&<>
                 <button className="btn-secondary !py-2" onClick={()=>{setFeeEditing(f);setFeeName(f.name);setFeeCategory(f.category);setFeeAmount(String(f.amount));}}>Edit draft</button>
                 <button className="btn-secondary !py-2" onClick={()=>void deleteFee(f)} disabled={busy}><Trash2 size={14}/>Delete draft</button>
