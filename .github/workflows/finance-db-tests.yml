@@ -1,0 +1,44 @@
+name: Finance database isolation
+
+on:
+  push:
+    branches: [feature/accountant-finance-foundation]
+    paths:
+      - "supabase/migrations/**"
+      - "tests/finance-permissions.sql"
+      - ".github/workflows/finance-db-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: Disposable Supabase finance migration and RLS checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies and PostgreSQL client
+        run: |
+          npm ci
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+      - name: Start disposable local Supabase services
+        run: npx supabase start
+      - name: Rebuild ONLY the local database from versioned migrations
+        run: npx supabase db reset --local --no-seed
+      - name: Validate finance transactions, role guards and tenant isolation
+        env:
+          PGCONNECT_TIMEOUT: "15"
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 -f tests/finance-permissions.sql
+      - name: Stop local services
+        if: always()
+        run: npx supabase stop --no-backup || true
