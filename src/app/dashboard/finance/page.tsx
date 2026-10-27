@@ -52,7 +52,8 @@ export default function SchoolFinance() {
   const [events,setEvents]=useState<Event[]>([]);
   const [images,setImages]=useState<Record<string,string>>({});
   const [search,setSearch]=useState("");
-  const [selectedStudent,setSelectedStudent]=useState(()=>typeof window==="undefined"?"":new URLSearchParams(window.location.search).get("student")||"");
+  const [selectedStudent,setSelectedStudent]=useState("");
+  const initialSelection=useRef(false);
   const [feeName,setFeeName]=useState("");
   const [feeCategory,setFeeCategory]=useState<"FEE"|"OTHER">("FEE");
   const [feeAmount,setFeeAmount]=useState("");
@@ -77,12 +78,21 @@ export default function SchoolFinance() {
       const db=browserClient();
       const tables=["finance_fees","finance_items","finance_charges","finance_payments",
         "finance_allocations","finance_sales","finance_events"] as const;
-      const results=await Promise.all(tables.map(table=>
-        db.from(table).select("*").eq("school_id",w.school.id).limit(5000)
-      ));
-      const failure=results.find(result=>result.error);
-      if(failure?.error) throw new Error(failure.error.message);
-      const [f,i,c,p,a,s,e]=results.map(result=>result.data||[]);
+      // Supabase Data API defaults to 1000 records per request. Paginate all ledgers:
+      // silently truncating finance history would produce incorrect balances.
+      const paged=async(table:string)=>{
+        const rows:Record<string,unknown>[]=[];
+        for(let offset=0;;offset+=500) {
+          const {data,error}=await db.from(table).select("*")
+            .eq("school_id",w.school.id).order("id")
+            .range(offset,offset+499);
+          if(error)throw new Error(error.message);
+          rows.push(...(data||[]));
+          if(!data||data.length<500)return rows;
+          if(rows.length>100000)throw new Error("Finance history is too large for the browser report. Please contact support.");
+        }
+      };
+      const [f,i,c,p,a,s,e]=await Promise.all(tables.map(paged));
       setFees(f as Fee[]);setItems(i as Item[]);setCharges(c as FinanceCharge[]);
       setPayments(p as FinancePayment[]);setAllocations(a as FinanceAllocation[]);
       setSales(s as Sale[]);setEvents((e as Event[]).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
@@ -97,6 +107,13 @@ export default function SchoolFinance() {
   },[authorized,w.school.id]);
 
   useEffect(()=>{void Promise.resolve().then(load);},[load]);
+  useEffect(()=>{
+    if(initialSelection.current)return;
+    initialSelection.current=true;
+    const id=new URLSearchParams(window.location.search).get("student");
+    if(id&&w.students.some(student=>student.id===id))
+      void Promise.resolve().then(()=>setSelectedStudent(id));
+  },[w.students]);
 
   const students=useMemo(()=>w.students.filter(s=>s.status==="ACTIVE").sort((a,b)=>fullName(a).localeCompare(fullName(b))),[w.students]);
   const balances=useMemo(()=>new Map(w.students.map(s=>[s.id,dueFor(s.id,charges,payments,allocations)])),[w.students,charges,payments,allocations]);
