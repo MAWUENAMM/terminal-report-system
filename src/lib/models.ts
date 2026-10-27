@@ -1,8 +1,9 @@
 export type Role =
-  "ADMIN" | "HEADTEACHER" | "CLASS_TEACHER" | "SUBJECT_TEACHER";
+  "ADMIN" | "ACCOUNTANT" | "HEADTEACHER" | "CLASS_TEACHER" | "SUBJECT_TEACHER";
 export type Level = "KG" | "PRIMARY" | "JHS";
 export const roleNames: Record<Role, string> = {
   ADMIN: "Administrator",
+  ACCOUNTANT: "Accountant",
   HEADTEACHER: "Headmaster",
   CLASS_TEACHER: "Class teacher",
   SUBJECT_TEACHER: "Subject teacher",
