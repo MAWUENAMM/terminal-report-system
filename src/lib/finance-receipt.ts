@@ -178,7 +178,7 @@ export async function downloadFinanceReceipt({
   y+=19;
   label("RECORDED BY",17,y+5,7,grey,true);label(issuedBy.slice(0,50),17,y+12,8.5,navy,true);
   label("PRINTED",117,y+5,7,grey,true);label(printedAt,117,y+12,8,navy);
-  const pages=doc.internal.getNumberOfPages();
+  const pages=doc.getNumberOfPages();
   for(let page=1;page<=pages;page++){
     doc.setPage(page);doc.setDrawColor(...gold);doc.setLineWidth(.45);doc.line(15,282,195,282);
     label("EDUREPORT  |  OFFICIAL SCHOOL PAYMENT RECORD",15,287,6.5,grey,true);
