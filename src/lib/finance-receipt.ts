@@ -123,24 +123,24 @@ export async function downloadFinanceReceipt({
   label("OFFICIAL SCHOOL FINANCE DOCUMENT",16,70,7.4,grey,true);
   right(payment.receipt_number,194,63,9,navy,true);
   right(paymentDate,194,70,8,grey);
-  box(15,79,180,31,green);
-  label("AMOUNT RECEIVED",21,88,8,[224,245,233],true);
-  label(ghs(Number(payment.amount)),21,101,20,[255,255,255],true);
-  box(153,85,35,12,payment.voided_at?[167,54,44]:[231,246,236]);
-  right(payment.voided_at?"VOIDED":"RECEIVED",184,92.5,10,payment.voided_at?[255,255,255]:green,true);
-  box(15,117,180,36,[245,249,247]);
-  label("STUDENT DETAILS",21,125,7.5,green,true);
-  label(studentName,21,135,fit(studentName,129,14),navy,true);
-  label("Admission No: "+student.admission_number,21,143,8,grey);
-  label("Class: "+(cls?.name||"Not specified"),21,149,8,grey);
-  if(photo)doc.addImage(photo,"PNG",163,120,25,29);
-  else{doc.setDrawColor(211,223,218);doc.roundedRect(163,120,25,29,2,2,"S");label("PHOTO",166,135,6,grey);}
+  box(15,76,180,27,green);
+  label("AMOUNT RECEIVED",21,84,8,[224,245,233],true);
+  label(ghs(Number(payment.amount)),21,96,19,[255,255,255],true);
+  box(153,82,35,12,payment.voided_at?[167,54,44]:[231,246,236]);
+  right(payment.voided_at?"VOIDED":"RECEIVED",184,89.5,10,payment.voided_at?[255,255,255]:green,true);
+  box(15,109,180,34,[245,249,247]);
+  label("STUDENT DETAILS",21,117,7.5,green,true);
+  label(studentName,21,126,fit(studentName,129,14),navy,true);
+  label("Admission No: "+student.admission_number,21,134,8,grey);
+  label("Class: "+(cls?.name||"Not specified"),21,140,8,grey);
+  if(photo)doc.addImage(photo,"PNG",163,111,25,29);
+  else{doc.setDrawColor(211,223,218);doc.roundedRect(163,111,25,29,2,2,"S");label("PHOTO",166,126,6,grey);}
   if(logo){
     doc.saveGraphicsState();
-    try{doc.setGState(new GState({opacity:.065}));doc.addImage(logo,"PNG",62,171,86,86);}
+    try{doc.setGState(new GState({opacity:.065}));doc.addImage(logo,"PNG",62,159,86,86);}
     finally{doc.restoreGraphicsState();}
   }
-  label("PAYMENT BREAKDOWN",16,162,9.5,green,true);
+  label("PAYMENT BREAKDOWN",16,151,9.5,green,true);
   const own=allocations.filter(a=>a.payment_id===payment.id);
   const lines=own.map(a=>{
     const charge=charges.find(c=>c.id===a.charge_id);
@@ -148,7 +148,7 @@ export async function downloadFinanceReceipt({
       ghs(Number(a.amount))];
   });
   autoTable(doc,{
-    startY:168,margin:{left:15,right:15,bottom:47},
+    startY:155,margin:{left:15,right:15,bottom:47},
     head:[["DESCRIPTION","ACADEMIC PERIOD","AMOUNT"]],
     body:lines.length?lines:[["Payment (allocation detail unavailable)","-",ghs(Number(payment.amount))]],
     theme:"grid",
@@ -157,21 +157,21 @@ export async function downloadFinanceReceipt({
     alternateRowStyles:{fillColor:[247,251,248]},
     columnStyles:{0:{cellWidth:82},1:{cellWidth:52},2:{cellWidth:46,halign:"right",fontStyle:"bold"}}
   });
-  let y=(doc as jsPDF & {lastAutoTable?:{finalY:number}}).lastAutoTable?.finalY||184;
+  let y=(doc as jsPDF & {lastAutoTable?:{finalY:number}}).lastAutoTable?.finalY||174;
   if(y>218){doc.addPage();y=24;}
-  y+=7;
-  box(15,y,180,31,mint);
-  label("TOTAL RECEIVED",21,y+9,8,green,true);
-  label(ghs(Number(payment.amount)),21,y+23,16,green,true);
-  right("BALANCE AT TIME OF PRINT",189,y+9,7,grey,true);
-  right(ghs(balance),189,y+22,11,navy,true);
-  y+=39;
+  y+=5;
+  box(15,y,180,28,mint);
+  label("TOTAL RECEIVED",21,y+8,8,green,true);
+  label(ghs(Number(payment.amount)),21,y+21,16,green,true);
+  right("BALANCE AT TIME OF PRINT",189,y+8,7,grey,true);
+  right(ghs(balance),189,y+20,11,navy,true);
+  y+=34;
   label("AMOUNT IN WORDS",17,y,7,green,true);
   const words=doc.splitTextToSize(clean(amountInWords(Number(payment.amount))),174);
   doc.setFont("helvetica","bold");doc.setFontSize(8.4);doc.setTextColor(...navy);
   doc.text(words,17,y+7);
   y+=Math.max(14,words.length*5+8);
-  if(y>237){doc.addPage();y=26;}
+  if(y>244){doc.addPage();y=26;}
   label("PAYMENT METHOD",17,y+5,7,grey,true);label(payment.method,17,y+12,9,navy,true);
   label("TRANSACTION REFERENCE",107,y+5,7,grey,true);
   label((payment.reference||"Not supplied").slice(0,40),107,y+12,8.5,navy);
