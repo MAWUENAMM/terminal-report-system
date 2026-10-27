@@ -18,7 +18,7 @@ import {
 
 type Fee = {
   id:string;school_id:string;academic_year:string;term:number;class_id:string|null;
-  name:string;amount:number;status:"DRAFT"|"APPLIED";created_at:string;
+  name:string;category:"FEE"|"OTHER";amount:number;status:"DRAFT"|"APPLIED";created_at:string;
 };
 type Item = {
   id:string;school_id:string;name:string;description:string;unit_price:number;
@@ -54,6 +54,7 @@ export default function SchoolFinance() {
   const [search,setSearch]=useState("");
   const [selectedStudent,setSelectedStudent]=useState("");
   const [feeName,setFeeName]=useState("");
+  const [feeCategory,setFeeCategory]=useState<"FEE"|"OTHER">("FEE");
   const [feeAmount,setFeeAmount]=useState("");
   const [feeClass,setFeeClass]=useState("");
   const [feeTerm,setFeeTerm]=useState(String(w.school.current_term));
@@ -130,11 +131,11 @@ export default function SchoolFinance() {
     await perform(async()=>{
       const {error}=await browserClient().from("finance_fees").insert({
         school_id:w.school.id,academic_year:feeYear.trim(),term:Number(feeTerm),
-        class_id:feeClass||null,name:feeName.trim(),amount:Number(feeAmount),
+        class_id:feeClass||null,name:feeName.trim(),category:feeCategory,amount:Number(feeAmount),
         created_by:w.profile.id
       });
       if(error)throw new Error(error.message);
-      setFeeName("");setFeeAmount("");
+      setFeeName("");setFeeAmount("");setFeeCategory("FEE");
     },"Fee draft created. Review it before applying to learners.");
   }
   async function applyFee(fee:Fee){
@@ -149,10 +150,10 @@ export default function SchoolFinance() {
     if(!feeEditing || !moneyInput(feeAmount))return;
     await perform(async()=>{
       const {error}=await browserClient().from("finance_fees")
-        .update({name:feeName.trim(),amount:Number(feeAmount)}).eq("id",feeEditing.id).eq("status","DRAFT")
+        .update({name:feeName.trim(),category:feeCategory,amount:Number(feeAmount)}).eq("id",feeEditing.id).eq("status","DRAFT")
         .select("id").single();
       if(error)throw new Error(error.message);
-      setFeeEditing(null);setFeeName("");setFeeAmount("");
+      setFeeEditing(null);setFeeName("");setFeeAmount("");setFeeCategory("FEE");
     },"Fee draft updated.");
   }
   async function deleteFee(fee:Fee){
@@ -356,6 +357,7 @@ export default function SchoolFinance() {
           <p className="mt-2 text-sm text-muted">Enter the amount manually. Save as a draft, then Apply to eligible learners when reviewed.</p>
           <form onSubmit={createFee} className="mt-5 space-y-4">
             <Field label="Fee or payment name"><input className="field" required minLength={2} maxLength={150} value={feeName} onChange={e=>setFeeName(e.target.value)} placeholder="School fees, PTA levy, examination…"/></Field>
+            <Field label="Charge type"><select className="field" value={feeCategory} onChange={e=>setFeeCategory(e.target.value as "FEE"|"OTHER")}><option value="FEE">Term school fee</option><option value="OTHER">Other custom levy or payment</option></select></Field>
             <Field label="Amount (GH₵)"><input className="field" required type="number" min="0.01" step="0.01" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
             <Field label="Academic year"><input className="field" required value={feeYear} onChange={e=>setFeeYear(e.target.value)} maxLength={20}/></Field>
             <Field label="Term"><select className="field" value={feeTerm} onChange={e=>setFeeTerm(e.target.value)}>{[1,2,3].map(t=><option key={t} value={t}>Term {t}</option>)}</select></Field>
@@ -368,7 +370,7 @@ export default function SchoolFinance() {
           <p className="mt-1 text-xs text-muted">Applying a fee adds a term charge to each eligible active learner exactly once.</p>
           <div className="mt-5 space-y-3">{[...fees].reverse().map(f=><div key={f.id} className="rounded-xl border border-slate-200 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><p className="font-bold">{f.name}</p><p className="mt-1 text-xs text-muted">{f.academic_year} · Term {f.term} · {w.classes.find(c=>c.id===f.class_id)?.name||"All classes"}</p>
+              <div><p className="font-bold">{f.name}</p><p className="mt-1 text-xs text-muted">{f.academic_year} · Term {f.term} · {f.category==="OTHER"?"Custom charge":"School fee"} · {w.classes.find(c=>c.id===f.class_id)?.name||"All classes"}</p>
                 <span className={"mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase "+(f.status==="APPLIED"?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-800")}>{f.status}</span>
               </div>
               <strong className="text-lg">{ghs(f.amount)}</strong>
@@ -376,7 +378,7 @@ export default function SchoolFinance() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button className="btn-primary !py-2" disabled={busy} onClick={()=>void applyFee(f)}>{f.status==="APPLIED"?"Apply to newly eligible learners":"Apply fees"}</button>
               {f.status==="DRAFT"&&<>
-                <button className="btn-secondary !py-2" onClick={()=>{setFeeEditing(f);setFeeName(f.name);setFeeAmount(String(f.amount));}}>Edit draft</button>
+                <button className="btn-secondary !py-2" onClick={()=>{setFeeEditing(f);setFeeName(f.name);setFeeCategory(f.category);setFeeAmount(String(f.amount));}}>Edit draft</button>
                 <button className="btn-secondary !py-2" onClick={()=>void deleteFee(f)} disabled={busy}><Trash2 size={14}/>Delete draft</button>
               </>}
             </div>
@@ -467,6 +469,7 @@ export default function SchoolFinance() {
       {feeEditing&&<Modal title="Edit fee draft" onClose={()=>{setFeeEditing(null);setFeeName("");setFeeAmount("");}}>
         <form className="space-y-4" onSubmit={editFee}>
           <Field label="Name"><input className="field" maxLength={150} required value={feeName} onChange={e=>setFeeName(e.target.value)}/></Field>
+          <Field label="Charge type"><select className="field" value={feeCategory} onChange={e=>setFeeCategory(e.target.value as "FEE"|"OTHER")}><option value="FEE">Term school fee</option><option value="OTHER">Other custom levy or payment</option></select></Field>
           <Field label="Amount (GH₵)"><input className="field" type="number" min="0.01" step="0.01" required value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
           <button className="btn-primary" disabled={busy}>Save draft changes</button>
         </form>
