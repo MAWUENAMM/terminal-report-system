@@ -453,8 +453,8 @@ revoke all on function public.finance_void_payment(uuid,text) from public,anon;
 revoke all on function public.finance_notify_payment(uuid) from public,anon;
 revoke all on function public.finance_void_charge(uuid,text) from public,anon;
 grant execute on function public.finance_apply_fee(uuid),
- public.finance_sell_item(uuid,uuid,integer),
- public.finance_record_payment(uuid,numeric,text,text,text),
+ public.finance_sell_item(uuid,uuid,integer,uuid),
+ public.finance_record_payment(uuid,numeric,text,text,text,uuid),
  public.finance_void_payment(uuid,text),
  public.finance_notify_payment(uuid),
  public.finance_void_charge(uuid,text) to authenticated;
