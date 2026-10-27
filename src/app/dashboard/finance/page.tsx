@@ -452,7 +452,7 @@ export default function SchoolFinance() {
           <form onSubmit={createFee} className="mt-5 space-y-4">
             <Field label="Fee or payment name"><input className="field" required minLength={2} maxLength={150} value={feeName} onChange={e=>setFeeName(e.target.value)} placeholder="School fees, PTA levy, examination…"/></Field>
             <Field label="Charge type"><select className="field" value={feeCategory} onChange={e=>setFeeCategory(e.target.value as "FEE"|"OTHER")}><option value="FEE">Term school fee</option><option value="OTHER">Other custom levy or payment</option></select></Field>
-            <Field label="Amount (GH₵)"><input className="field" required type="number" min="0.01" step="0.01" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
+            <Field label="Amount (GHS)"><input className="field" required type="number" min="0.01" step="0.01" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
             <Field label="Academic year"><input className="field" required value={feeYear} onChange={e=>setFeeYear(e.target.value)} maxLength={20}/></Field>
             <Field label="Term"><select className="field" value={feeTerm} onChange={e=>setFeeTerm(e.target.value)}>{[1,2,3].map(t=><option key={t} value={t}>Term {t}</option>)}</select></Field>
             <Field label="Who should receive this charge?">
@@ -499,7 +499,7 @@ export default function SchoolFinance() {
           <h2 className="text-lg font-bold">Record student payment</h2>
           <p className="mt-2 text-sm text-muted">Payments automatically settle the oldest outstanding charges first. Record the actual payment method and reference.</p>
           <form onSubmit={pay} className="mt-5 space-y-4">
-            <Field label="Amount received (GH₵)"><input type="number" className="field" min="0.01" step="0.01" required value={paymentAmount} onChange={e=>{setPaymentAmount(e.target.value);paymentRequestKey.current=null;}}/></Field>
+            <Field label="Amount received (GHS)"><input type="number" className="field" min="0.01" step="0.01" required value={paymentAmount} onChange={e=>{setPaymentAmount(e.target.value);paymentRequestKey.current=null;}}/></Field>
             <Field label="Payment mode"><select className="field" value={paymentMethod} onChange={e=>{setPaymentMethod(e.target.value);paymentRequestKey.current=null;}}>{[["CASH","Cash"],["MOMO","Mobile Money"],["BANK","Bank transfer"],["CHEQUE","Cheque"],["OTHER","Other"]].map(([key,val])=><option key={key} value={key}>{val}</option>)}</select></Field>
             <Field label="Reference / transaction ID"><input className="field" maxLength={120} value={paymentReference} onChange={e=>{setPaymentReference(e.target.value);paymentRequestKey.current=null;}} placeholder="MoMo or bank reference (if any)"/></Field>
             <Field label="Payment notes"><textarea className="field" maxLength={500} value={paymentNote} onChange={e=>{setPaymentNote(e.target.value);paymentRequestKey.current=null;}} rows={2} placeholder="Optional internal notes"/></Field>
@@ -665,7 +665,7 @@ export default function SchoolFinance() {
         <form className="space-y-4" onSubmit={editFee}>
           <Field label="Name"><input className="field" maxLength={150} required value={feeName} onChange={e=>setFeeName(e.target.value)}/></Field>
           <Field label="Charge type"><select className="field" value={feeCategory} onChange={e=>setFeeCategory(e.target.value as "FEE"|"OTHER")}><option value="FEE">Term school fee</option><option value="OTHER">Other custom levy or payment</option></select></Field>
-          <Field label="Amount (GH₵)"><input className="field" type="number" min="0.01" step="0.01" required value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
+          <Field label="Amount (GHS)"><input className="field" type="number" min="0.01" step="0.01" required value={feeAmount} onChange={e=>setFeeAmount(e.target.value)}/></Field>
           <button className="btn-primary" disabled={busy}>Save draft changes</button>
         </form>
       </Modal>}
@@ -673,7 +673,7 @@ export default function SchoolFinance() {
         <form className="space-y-4" onSubmit={saveItem}>
           <Field label="Item name"><input className="field" minLength={2} maxLength={150} required value={itemDraft.name} onChange={e=>setItemDraft({...itemDraft,name:e.target.value})}/></Field>
           <Field label="Description"><textarea className="field" value={itemDraft.description} maxLength={400} onChange={e=>setItemDraft({...itemDraft,description:e.target.value})} rows={2}/></Field>
-          <Field label="Unit price (GH₵)"><input className="field" type="number" min="0" step="0.01" value={itemDraft.unit_price} required onChange={e=>setItemDraft({...itemDraft,unit_price:e.target.value})}/></Field>
+          <Field label="Unit price (GHS)"><input className="field" type="number" min="0" step="0.01" value={itemDraft.unit_price} required onChange={e=>setItemDraft({...itemDraft,unit_price:e.target.value})}/></Field>
           <Field label="Available stock"><input className="field" type="number" min="0" step="1" value={itemDraft.stock_quantity} required onChange={e=>setItemDraft({...itemDraft,stock_quantity:e.target.value})}/></Field>
           <Field label="Item photograph (PNG, JPG or WEBP, max 2 MB)"><input className="field" type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>setItemDraft({...itemDraft,image:e.target.files?.[0]||null})}/></Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={itemDraft.active} onChange={e=>setItemDraft({...itemDraft,active:e.target.checked})}/>Available for sale</label>
