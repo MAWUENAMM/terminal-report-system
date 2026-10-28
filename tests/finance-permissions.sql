@@ -70,7 +70,7 @@ select pg_temp.expect((select count(*)=1 from public.finance_payments),'overpaym
 
 insert into public.finance_items(id,school_id,name,unit_price,stock_quantity)
 values('a5000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-000000000001',
-'Uniform',15,3);
+'Uniform',15,6);
 select pg_temp.expect(public.finance_sell_item(
  'a5000000-0000-4000-8000-000000000001','a3000000-0000-4000-8000-000000000001',1,
  'a6000000-0000-4000-8000-000000000002') is not null,'item sale recorded');
@@ -79,7 +79,7 @@ select pg_temp.expect(public.finance_sell_item(
  'a6000000-0000-4000-8000-000000000002')
  = (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000002'),
  'sale retry same identity');
-select pg_temp.expect((select stock_quantity=2 from public.finance_items where id='a5000000-0000-4000-8000-000000000001'),
+select pg_temp.expect((select stock_quantity=5 from public.finance_items where id='a5000000-0000-4000-8000-000000000001'),
  'stock decremented exactly once');
 select pg_temp.expect((select count(*)=3 from public.finance_charges),'sale generates a new charge');
 
