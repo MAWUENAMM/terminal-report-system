@@ -67,11 +67,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     void Promise.resolve().then(()=>setDismissedAlertKeys(saved));
   },[alertStorageKey]);
 
-  function dismissAlert(key:string){
-    const updated=Array.from(new Set([...dismissedAlertKeys,key])).slice(-150);
+  function dismissAlerts(keys:string[]){
+    const updated=Array.from(new Set([...dismissedAlertKeys,...keys])).slice(-150);
     setDismissedAlertKeys(updated);
     try{window.localStorage.setItem(alertStorageKey,JSON.stringify(updated));}catch{ /* session-only */ }
   }
+  function dismissAlert(key:string){ dismissAlerts([key]); }
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -250,9 +251,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const actionableCount=unreadFinanceCount+(showReportAlert?1:0)+(showTermAlert?1:0)+(showSetupAlert?1:0);
   async function markAllNotificationsRead(){
     await readFinanceNotifications(unreadFinanceEvents.map(e=>e.id));
-    if(showReportAlert)dismissAlert(reportAlertKey);
-    if(showTermAlert)dismissAlert(termAlertKey);
-    if(showSetupAlert)dismissAlert(setupAlertKey);
+    dismissAlerts([
+      ...(showReportAlert?[reportAlertKey]:[]),
+      ...(showTermAlert?[termAlertKey]:[]),
+      ...(showSetupAlert?[setupAlertKey]:[])
+    ]);
   }
   const notificationCount =
     unreadFinanceCount + pendingRequests.length +
