@@ -133,4 +133,101 @@ values('a0000000-0000-4000-8000-000000000001','2026/2027',1,
  'a1000000-0000-4000-8000-000000000001')$q$,
  'specific fee cannot target student from another school');
 
+-- A student can pay for an item directly even with older school fees outstanding.
+select pg_temp.expect(public.finance_sell_item(
+ 'a5000000-0000-4000-8000-000000000001',
+ 'a3000000-0000-4000-8000-000000000002',1,
+ 'a6000000-0000-4000-8000-000000000020') is not null,
+ 'second student sale created for item-payment test');
+select pg_temp.expect(public.finance_record_item_payment(
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000020'),
+ 15,'CASH','TEST-ITEM-001','Item payment','a6000000-0000-4000-8000-000000000021') is not null,
+ 'item-specific cash payment succeeds');
+select pg_temp.expect(
+ (select sum(a.amount)=15 from public.finance_allocations a
+ join public.finance_charges ch on ch.id=a.charge_id
+ where ch.sale_id=(select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000020')),
+ 'full item payment goes to sale charge, not older fees');
+select pg_temp.expect(
+ (select count(*)=1 from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000021'),
+ 'one item payment only');
+select pg_temp.expect(public.finance_record_item_payment(
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000020'),
+ 15,'CASH','TEST-ITEM-001','Item payment','a6000000-0000-4000-8000-000000000021')
+ = (select id from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000021'),
+ 'item payment retry is idempotent');
+select pg_temp.denied($q$select public.finance_record_item_payment(
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000020'),
+ 1,'CASH','OTHER','Invalid duplicate','a6000000-0000-4000-8000-000000000022')$q$,
+ 'paid item cannot be overpaid');
+
+-- Existing money assigned to a fee can be reallocated to a sale without a new receipt/payment.
+select public.finance_record_payment('a3000000-0000-4000-8000-000000000002',
+ 25,'MOMO','TEST-MOMO-002','Fee allocation test','a6000000-0000-4000-8000-000000000023');
+select pg_temp.expect(public.finance_sell_item(
+ 'a5000000-0000-4000-8000-000000000001',
+ 'a3000000-0000-4000-8000-000000000002',1,
+ 'a6000000-0000-4000-8000-000000000024') is not null,
+ 'sale exists for reallocation');
+select pg_temp.expect(public.finance_reassign_payment_to_sale(
+ (select id from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000023'),
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000024'),
+ 15,'Cash mistakenly applied to old school fees',
+ 'a6000000-0000-4000-8000-000000000025') is not null,
+ 'reassign old fee payment to item');
+select pg_temp.expect(
+ (select a.amount=15 from public.finance_allocations a
+ join public.finance_charges c on c.id=a.charge_id
+ join public.finance_sales sale on sale.id=c.sale_id
+ where sale.request_key='a6000000-0000-4000-8000-000000000024'),
+ 'reallocated money is on correct item');
+select pg_temp.expect(
+ (select count(*)=1 from public.finance_payment_reassignments
+ where request_key='a6000000-0000-4000-8000-000000000025'),
+ 'correction audit recorded exactly once');
+select pg_temp.expect(public.finance_reassign_payment_to_sale(
+ (select id from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000023'),
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000024'),
+ 15,'Cash mistakenly applied to old school fees',
+ 'a6000000-0000-4000-8000-000000000025')
+ =(select id from public.finance_payment_reassignments
+   where request_key='a6000000-0000-4000-8000-000000000025'),
+ 'same correction request cannot reassign twice');
+
+select pg_temp.expect(
+ (public.finance_sell_item_paid('a5000000-0000-4000-8000-000000000001',
+ 'a3000000-0000-4000-8000-000000000001',1,
+ 'a6000000-0000-4000-8000-000000000030',
+ 'a6000000-0000-4000-8000-000000000031',15,'CASH','CHECKOUT') ->> 'payment_id') is not null,
+ 'combined checkout saves sale and payment atomically');
+select pg_temp.expect(
+ (select count(*)=1 from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000030'),
+ 'checkout creates one sale');
+select pg_temp.expect(
+ (select count(*)=1 from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000031'),
+ 'checkout creates one payment');
+select pg_temp.expect(
+ (select sum(a.amount)=15 from public.finance_allocations a
+ join public.finance_payments p on p.id=a.payment_id
+ where p.request_key='a6000000-0000-4000-8000-000000000031'),
+ 'checkout payment allocated directly to purchased item');
+select pg_temp.expect(
+ (public.finance_sell_item_paid('a5000000-0000-4000-8000-000000000001',
+ 'a3000000-0000-4000-8000-000000000001',1,
+ 'a6000000-0000-4000-8000-000000000030',
+ 'a6000000-0000-4000-8000-000000000031',15,'CASH','CHECKOUT') ->> 'payment_id') is not null,
+ 'checkout retry safe');
+
+-- Teacher and another school's accountant cannot alter item settlements.
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.finance_record_item_payment(
+ 'a6000000-0000-4000-8000-000000000020',1,'CASH','','',
+ 'a6000000-0000-4000-8000-000000000040')$q$, 'teacher blocked from item payment');
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.finance_reassign_payment_to_sale(
+ (select id from public.finance_payments where request_key='a6000000-0000-4000-8000-000000000023'),
+ (select id from public.finance_sales where request_key='a6000000-0000-4000-8000-000000000024'),
+ 1,'Improper cross-school finance correction','a6000000-0000-4000-8000-000000000041')$q$,
+ 'cross-school correction prohibited');
+
 rollback;
