@@ -5,13 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   ArrowDownToLine, BellRing, BookOpen, Check, CircleDollarSign,
   ClipboardList, CreditCard, History, Package, Plus, RefreshCcw,
-  Search, ShoppingBag, Trash2, Wallet, FileDown, TableProperties, AlertCircle, CircleCheck, Users
+  Search, ShoppingBag, Trash2, Wallet, FileDown, TableProperties, AlertCircle, CircleCheck, Users, Printer, FileText
 } from "lucide-react";
 import { browserClient } from "@/lib/supabase/client";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Empty, Field, Modal, Restricted } from "@/components/ui";
 import { fullName } from "@/lib/models";
 import { downloadFinanceReport, exportFinanceCsv, reportRows } from "@/lib/finance-reports";
+import { calculateSaleSettlement, downloadSaleDocument, type FinanceSale } from "@/lib/finance-sale-receipt";
 import {
   dueFor, downloadFinanceReceipt, ghs,
   type FinanceAllocation, type FinanceCharge, type FinancePayment
@@ -25,10 +26,7 @@ type Item = {
   id:string;school_id:string;name:string;description:string;unit_price:number;
   stock_quantity:number;image_path:string|null;active:boolean;
 };
-type Sale = {
-  id:string;student_id:string;item_id:string;quantity:number;unit_price:number;
-  total:number;created_at:string;
-};
+type Sale = FinanceSale;
 type Event = {
   id:string;kind:string;message:string;actor_name:string;
   payment_id:string|null;created_at:string;
@@ -56,6 +54,8 @@ export default function SchoolFinance() {
   const [payments,setPayments]=useState<FinancePayment[]>([]);
   const [allocations,setAllocations]=useState<FinanceAllocation[]>([]);
   const [sales,setSales]=useState<Sale[]>([]);
+  const [latestSaleId,setLatestSaleId]=useState<string|null>(null);
+  const [saleDocumentBusy,setSaleDocumentBusy]=useState<string|null>(null);
   const [events,setEvents]=useState<Event[]>([]);
   const [images,setImages]=useState<Record<string,string>>({});
   const [search,setSearch]=useState("");
@@ -276,14 +276,38 @@ export default function SchoolFinance() {
     event.preventDefault();
     if(!selected)return setError("Select a learner before selling an item.");
     saleRequestKey.current ||= crypto.randomUUID();
-    await perform(async()=>{
-      await invoke("finance_sell_item",{
+    const ok=await run(async()=>{
+      const saleId=await invoke<string>("finance_sell_item",{
         p_item_id:saleItem,p_student_id:selected.id,p_quantity:Number(saleQty),
         p_request_key:saleRequestKey.current
       });
+      setLatestSaleId(saleId);
       saleRequestKey.current=null;
       setSaleQty("1");setSaleItem("");
-    },"Sale recorded, stock updated and student account charged.");
+    },"Sale recorded. You can now download or print the item sale document below.");
+    if(ok)await load();
+  }
+  async function saleDocument(sale:Sale,mode:"download"|"print"){
+    // Open a tab from the actual click: browsers otherwise block an asynchronous print preview.
+    const tab=mode==="print"?window.open("","_blank"):null;
+    if(tab){tab.document.title="Preparing item sale document";tab.document.body.textContent="Preparing printable document…";}
+    setSaleDocumentBusy(sale.id);
+    setError("");
+    try{
+      const student=w.students.find(st=>st.id===sale.student_id);
+      const item=items.find(i=>i.id===sale.item_id);
+      const charge=charges.find(c=>c.sale_id===sale.id&&!c.voided_at);
+      if(!student||!item||!charge)throw new Error("Sale invoice cannot be generated because the student, item or recorded charge is missing. Refresh finance records and try again.");
+      await downloadSaleDocument({
+        school:w.school,student,cls:w.classes.find(c=>c.id===student.class_id),
+        sale,item,charge,payments,allocations,
+        recordedBy:w.staff.find(p=>p.id===sale.created_by)?.full_name||"School finance office",
+        itemImageUrl:images[item.id]
+      },mode,tab);
+    }catch(e){
+      tab?.close();
+      setError(e instanceof Error?e.message:"Could not prepare the sale document.");
+    }finally{setSaleDocumentBusy(null);}
   }
   async function receipt(payment:FinancePayment){
     const student=w.students.find(s=>s.id===payment.student_id);
@@ -552,14 +576,64 @@ export default function SchoolFinance() {
             <Field label="Quantity"><input className="field" type="number" min="1" step="1" value={saleQty} onChange={e=>{setSaleQty(e.target.value);saleRequestKey.current=null;}} required/></Field>
             <button className="btn-primary" disabled={busy||!selected||!saleItem}><ShoppingBag size={16}/>Record sale</button>
           </form>
-          <p className="mt-3 text-xs text-muted">Sales reduce stock immediately and add an item charge to the learner. Record payment separately to issue a receipt.</p>
+          <p className="mt-3 text-xs leading-5 text-muted">Sales reduce stock and create a student charge. The sale document is available immediately. If the student has not paid, it will be marked Payment Pending. Use Payments & receipts to record money received.</p>
+          {latestSaleId&&(()=>{
+            const sale=sales.find(x=>x.id===latestSaleId);
+            const charge=charges.find(c=>c.sale_id===latestSaleId&&!c.voided_at);
+            if(!sale)return <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Sale saved. The document will be available in Recent item sales after refreshing records.</div>;
+            const settlement=charge?calculateSaleSettlement(sale,charge,allocations,payments):null;
+            return <div className="mt-5 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-4">
+              <div className="flex items-start gap-3">
+                <CircleCheck className="mt-0.5 shrink-0 text-emerald-700" size={22}/>
+                <div className="flex-1">
+                  <p className="font-bold text-emerald-950">Sale recorded successfully</p>
+                  <p className="mt-1 text-xs text-emerald-900">Item purchase document ready for {w.students.find(st=>st.id===sale.student_id)?fullName(w.students.find(st=>st.id===sale.student_id)!):"the learner"} · {ghs(Number(sale.total))}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button className="btn-primary !py-2" type="button" disabled={!charge||saleDocumentBusy===sale.id} onClick={()=>void saleDocument(sale,"download")}><FileDown size={16}/>Download receipt / invoice</button>
+                    <button className="btn-secondary !py-2" type="button" disabled={!charge||saleDocumentBusy===sale.id} onClick={()=>void saleDocument(sale,"print")}><Printer size={16}/>Print</button>
+                    {settlement&&<span className={"inline-flex items-center rounded-full px-3 py-1 text-xs font-bold "+(settlement.status==="PAID"?"bg-emerald-100 text-emerald-800":settlement.status==="PART_PAID"?"bg-amber-100 text-amber-800":"bg-rose-100 text-rose-800")}>{settlement.status==="PAID"?"Fully paid":settlement.status==="PART_PAID"?"Part-paid":"Payment pending"}</span>}
+                  </div>
+                </div>
+              </div>
+            </div>;
+          })()}
         </section>
-        {!!sales.length&&<section className="surface rounded-2xl p-5">
-          <h2 className="text-lg font-bold">Recent item sales</h2>
-          <div className="mt-3 space-y-2">{[...sales].sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,20).map(s=><div key={s.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-3 text-sm">
-            <span>{items.find(i=>i.id===s.item_id)?.name||"Item"} × {s.quantity} · {fullName(w.students.find(st=>st.id===s.student_id)!)||"Learner"}</span>
-            <strong>{ghs(s.total)}</strong>
-          </div>)}</div>
+        {!!sales.length&&<section className="surface overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+            <h2 className="text-lg font-bold">Item sales & printable receipts</h2>
+            <p className="mt-1 text-xs text-slate-600">Download or print any recorded item sale. Documents show the actual payment status for that item, including partial payments.</p>
+          </div>
+          <div className="max-h-[700px] divide-y divide-slate-100 overflow-auto">
+            {[...sales].sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(s=>{
+              const charge=charges.find(c=>c.sale_id===s.id&&!c.voided_at);
+              const settlement=charge?calculateSaleSettlement(s,charge,allocations,payments):null;
+              const student=w.students.find(st=>st.id===s.student_id);
+              return <div key={s.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 text-sm hover:bg-slate-50">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ShoppingBag size={19}/></span>
+                  <div>
+                    <p className="font-bold text-slate-900">{items.find(i=>i.id===s.item_id)?.name||"School item"} × {s.quantity}</p>
+                    <p className="mt-1 text-xs text-slate-600">{student?fullName(student):"Student record unavailable"} · {new Date(s.created_at).toLocaleDateString("en-GB")}</p>
+                    <p className="mt-1 text-xs font-bold text-slate-900">{ghs(Number(s.total))}</p>
+                    {settlement&&<span className={"mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold "+(settlement.status==="PAID"?"bg-emerald-100 text-emerald-800":settlement.status==="PART_PAID"?"bg-amber-100 text-amber-800":"bg-rose-100 text-rose-800")}>
+                      {settlement.status==="PAID"?"Paid in full":settlement.status==="PART_PAID"?"Part-paid · "+ghs(settlement.balance)+" due":"Unpaid · "+ghs(settlement.balance)+" due"}
+                    </span>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-primary !py-2" disabled={!charge||saleDocumentBusy===s.id} onClick={()=>void saleDocument(s,"download")}>
+                    <FileDown size={15}/>Download PDF
+                  </button>
+                  <button type="button" className="btn-secondary !py-2" disabled={!charge||saleDocumentBusy===s.id} onClick={()=>void saleDocument(s,"print")}>
+                    <Printer size={15}/>Print
+                  </button>
+                  {settlement&&settlement.balance>0&&student&&<button type="button" className="btn-secondary !py-2" onClick={()=>{setSelectedStudent(student.id);setView("payments");}}>
+                    <CreditCard size={15}/>Record payment
+                  </button>}
+                </div>
+              </div>;
+            })}
+          </div>
         </section>}
       </div>}
 
