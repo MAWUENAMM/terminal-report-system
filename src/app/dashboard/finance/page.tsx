@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   ArrowDownToLine, BellRing, BookOpen, Check, CircleDollarSign,
   ClipboardList, CreditCard, History, Package, Plus, RefreshCcw,
-  Search, ShoppingBag, Trash2, Wallet, FileDown, TableProperties, AlertCircle, CircleCheck, Users, Printer, FileText
+  Search, ShoppingBag, Trash2, Wallet, FileDown, TableProperties, AlertCircle, CircleCheck, Users, Printer
 } from "lucide-react";
 import { browserClient } from "@/lib/supabase/client";
 import { useWorkspace } from "@/components/workspace";
