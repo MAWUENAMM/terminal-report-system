@@ -89,7 +89,7 @@ export default function SchoolFinance() {
   const [itemPaymentMethod,setItemPaymentMethod]=useState("CASH");
   const [itemPaymentReference,setItemPaymentReference]=useState("");
   const [existingPaymentId,setExistingPaymentId]=useState("");
-  const [correctionReason,setItemCorrectionReason]=useState("");
+  const [itemReassignmentReason,setItemCorrectionReason]=useState("");
   const itemPaymentRequestKey=useRef<string|null>(null);
   const reassignRequestKey=useRef<string|null>(null);
   const paymentRequestKey=useRef<string|null>(null);
@@ -309,12 +309,12 @@ export default function SchoolFinance() {
     const amount=Number(itemPaymentAmount);
     if(!moneyInput(itemPaymentAmount)||amount>remaining)return setError("Amount must be positive and cannot exceed this item's remaining balance.");
     if(salePaymentMode==="REALLOCATE"){
-      if(!existingPaymentId||correctionReason.trim().length<8)return setError("Select a previously recorded payment and explain the correction.");
+      if(!existingPaymentId||itemReassignmentReason.trim().length<8)return setError("Select a previously recorded payment and explain the correction.");
       reassignRequestKey.current ||= crypto.randomUUID();
       const ok=await run(async()=>{
         await invoke("finance_reassign_payment_to_sale",{
           p_payment_id:existingPaymentId,p_sale_id:sale.id,p_amount:amount,
-          p_reason:correctionReason.trim(),p_request_key:reassignRequestKey.current
+          p_reason:itemReassignmentReason.trim(),p_request_key:reassignRequestKey.current
         });
       },"Existing payment corrected and allocated to the purchased item; no new money recorded.");
       if(ok){reassignRequestKey.current=null;setPayingSale(null);await load();}
@@ -849,7 +849,7 @@ export default function SchoolFinance() {
                 <Field label="Reason for correction">
                   <textarea className="field" required minLength={8} maxLength={500} rows={2}
                     placeholder="e.g. Cash was paid for the uniform but posted against school fees"
-                    value={correctionReason} onChange={e=>{setItemCorrectionReason(e.target.value);reassignRequestKey.current=null;}}/>
+                    value={itemReassignmentReason} onChange={e=>{setItemCorrectionReason(e.target.value);reassignRequestKey.current=null;}}/>
                 </Field>
               </div>}
               <Field label="Amount to apply to this item (GHS)">
