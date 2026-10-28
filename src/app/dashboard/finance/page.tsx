@@ -79,8 +79,22 @@ export default function SchoolFinance() {
   const [itemDraft,setItemDraft]=useState<ItemDraft|null>(null);
   const [saleItem,setSaleItem]=useState("");
   const [saleQty,setSaleQty]=useState("1");
+  const [checkoutPayment,setCheckoutPayment]=useState<"NONE"|"FULL"|"PARTIAL">("NONE");
+  const [checkoutAmount,setCheckoutAmount]=useState("");
+  const [checkoutMethod,setCheckoutMethod]=useState("CASH");
+  const [checkoutReference,setCheckoutReference]=useState("");
+  const [payingSale,setPayingSale]=useState<Sale|null>(null);
+  const [salePaymentMode,setSalePaymentMode]=useState<"NEW"|"REALLOCATE">("NEW");
+  const [itemPaymentAmount,setItemPaymentAmount]=useState("");
+  const [itemPaymentMethod,setItemPaymentMethod]=useState("CASH");
+  const [itemPaymentReference,setItemPaymentReference]=useState("");
+  const [existingPaymentId,setExistingPaymentId]=useState("");
+  const [correctionReason,setItemCorrectionReason]=useState("");
+  const itemPaymentRequestKey=useRef<string|null>(null);
+  const reassignRequestKey=useRef<string|null>(null);
   const paymentRequestKey=useRef<string|null>(null);
   const saleRequestKey=useRef<string|null>(null);
+  const checkoutPaymentRequestKey=useRef<string|null>(null);
 
   const load=useCallback(async()=>{
     if(!authorized)return;
@@ -272,19 +286,90 @@ export default function SchoolFinance() {
       if(error)throw new Error(error.message);
     },"Unused item deleted.");
   }
+  const itemAtCheckout=items.find(i=>i.id===saleItem);
+  const checkoutTotal=itemAtCheckout?Math.round(Number(itemAtCheckout.unit_price)*Number(saleQty)*100)/100:0;
+  function openSalePayment(sale:Sale){
+    const charge=charges.find(c=>c.sale_id===sale.id&&!c.voided_at);
+    const settlement=charge?calculateSaleSettlement(sale,charge,allocations,payments):null;
+    setPayingSale(sale);
+    setSalePaymentMode("NEW");
+    setItemPaymentAmount(String(settlement?.balance||""));
+    setExistingPaymentId("");
+    setItemCorrectionReason("");
+    itemPaymentRequestKey.current=null;
+    reassignRequestKey.current=null;
+  }
+  async function submitItemPayment(event:FormEvent){
+    event.preventDefault();
+    if(!payingSale)return;
+    const sale=payingSale;
+    const charge=charges.find(c=>c.sale_id===sale.id&&!c.voided_at);
+    if(!charge)return setError("The original item charge is missing.");
+    const remaining=calculateSaleSettlement(sale,charge,allocations,payments).balance;
+    const amount=Number(itemPaymentAmount);
+    if(!moneyInput(itemPaymentAmount)||amount>remaining)return setError("Amount must be positive and cannot exceed this item's remaining balance.");
+    if(salePaymentMode==="REALLOCATE"){
+      if(!existingPaymentId||correctionReason.trim().length<8)return setError("Select a previously recorded payment and explain the correction.");
+      reassignRequestKey.current ||= crypto.randomUUID();
+      const ok=await run(async()=>{
+        await invoke("finance_reassign_payment_to_sale",{
+          p_payment_id:existingPaymentId,p_sale_id:sale.id,p_amount:amount,
+          p_reason:correctionReason.trim(),p_request_key:reassignRequestKey.current
+        });
+      },"Existing payment corrected and allocated to the purchased item; no new money recorded.");
+      if(ok){reassignRequestKey.current=null;setPayingSale(null);await load();}
+    }else{
+      itemPaymentRequestKey.current ||= crypto.randomUUID();
+      const ok=await run(async()=>{
+        await invoke("finance_record_item_payment",{
+          p_sale_id:sale.id,p_amount:amount,p_method:itemPaymentMethod,
+          p_reference:itemPaymentReference.trim(),p_note:"Item purchase payment",
+          p_request_key:itemPaymentRequestKey.current
+        });
+      },"Item payment recorded and linked directly to this sale. Receipt available.");
+      if(ok){itemPaymentRequestKey.current=null;setPayingSale(null);await load();}
+    }
+  }
   async function sell(event:FormEvent){
     event.preventDefault();
     if(!selected)return setError("Select a learner before selling an item.");
+    const quantity=Number(saleQty);
+    if(!itemAtCheckout||!Number.isSafeInteger(quantity)||quantity<1||quantity>itemAtCheckout.stock_quantity)
+      return setError("Select an available item and a valid quantity.");
+    if(checkoutPayment!=="NONE"){
+      const amount=checkoutPayment==="FULL"?checkoutTotal:Number(checkoutAmount);
+      if(!Number.isFinite(amount)||amount<=0||amount>checkoutTotal||
+        Math.round(amount*100)!==amount*100 && Math.abs(Math.round(amount*100)-amount*100)>1e-6)
+        return setError("Enter a valid item payment not exceeding the total.");
+      if(checkoutPayment==="PARTIAL"&&amount>=checkoutTotal)
+        return setError("Choose Pay in full for the full item price.");
+    }
     saleRequestKey.current ||= crypto.randomUUID();
+    if(checkoutPayment!=="NONE")checkoutPaymentRequestKey.current ||= crypto.randomUUID();
     const ok=await run(async()=>{
-      const saleId=await invoke<string>("finance_sell_item",{
-        p_item_id:saleItem,p_student_id:selected.id,p_quantity:Number(saleQty),
-        p_request_key:saleRequestKey.current
-      });
+      let saleId:string;
+      if(checkoutPayment==="NONE"){
+        saleId=await invoke<string>("finance_sell_item",{
+          p_item_id:saleItem,p_student_id:selected.id,p_quantity:quantity,
+          p_request_key:saleRequestKey.current
+        });
+      }else{
+        const response=await invoke<{sale_id:string;payment_id:string}>("finance_sell_item_paid",{
+          p_item_id:saleItem,p_student_id:selected.id,p_quantity:quantity,
+          p_sale_request_key:saleRequestKey.current,
+          p_payment_request_key:checkoutPaymentRequestKey.current,
+          p_amount:checkoutPayment==="FULL"?checkoutTotal:Number(checkoutAmount),
+          p_method:checkoutMethod,p_reference:checkoutReference.trim()
+        });
+        saleId=response.sale_id;
+      }
       setLatestSaleId(saleId);
-      saleRequestKey.current=null;
-      setSaleQty("1");setSaleItem("");
-    },"Sale recorded. You can now download or print the item sale document below.");
+      saleRequestKey.current=null;checkoutPaymentRequestKey.current=null;
+      setSaleQty("1");setSaleItem("");setCheckoutPayment("NONE");
+      setCheckoutAmount("");setCheckoutReference("");
+    },checkoutPayment==="NONE"?
+      "Sale recorded. The item is marked payment pending until money is received.":
+      "Sale and item payment recorded together. Download the paid receipt below.");
     if(ok)await load();
   }
   async function saleDocument(sale:Sale,mode:"download"|"print"){
