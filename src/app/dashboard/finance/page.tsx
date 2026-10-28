@@ -656,12 +656,41 @@ export default function SchoolFinance() {
         {!items.length&&<Empty>No school items added yet.</Empty>}
         <section className="surface rounded-2xl p-5">
           <h2 className="text-lg font-bold">Sell an item to a learner</h2>
-          <form onSubmit={sell} className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px_auto] sm:items-end">
+          <form onSubmit={sell} className="mt-4 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-[1fr_150px] sm:items-end">
             <Field label="Item"><select className="field" value={saleItem} required onChange={e=>{setSaleItem(e.target.value);saleRequestKey.current=null;}}><option value="">Choose item</option>{items.filter(i=>i.active&&i.stock_quantity>0).map(i=><option key={i.id} value={i.id}>{i.name} · {ghs(i.unit_price)} · {i.stock_quantity} remaining</option>)}</select></Field>
             <Field label="Quantity"><input className="field" type="number" min="1" step="1" value={saleQty} onChange={e=>{setSaleQty(e.target.value);saleRequestKey.current=null;}} required/></Field>
-            <button className="btn-primary" disabled={busy||!selected||!saleItem}><ShoppingBag size={16}/>Record sale</button>
+            </div>
+            {itemAtCheckout&&checkoutTotal>0&&<p className="text-sm font-semibold text-slate-700">Purchase total: <span className="text-emerald-800">{ghs(checkoutTotal)}</span></p>}
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+              <Field label="Has the student paid for this item?">
+                <select className="field" value={checkoutPayment} onChange={e=>{setCheckoutPayment(e.target.value as "NONE"|"FULL"|"PARTIAL");checkoutPaymentRequestKey.current=null;}}>
+                  <option value="NONE">No payment yet — mark as pending</option>
+                  <option value="FULL">Yes — paid the full item price</option>
+                  <option value="PARTIAL">Yes — paid part of the item price</option>
+                </select>
+              </Field>
+              {checkoutPayment!=="NONE"&&<div className="mt-3 grid gap-3 md:grid-cols-2">
+                {checkoutPayment==="PARTIAL"&&<Field label="Amount received (GHS)">
+                  <input type="number" className="field" min="0.01" max={checkoutTotal||undefined} step="0.01" required
+                    value={checkoutAmount} onChange={e=>{setCheckoutAmount(e.target.value);checkoutPaymentRequestKey.current=null;}}/>
+                </Field>}
+                <Field label="How was payment made?">
+                  <select className="field" value={checkoutMethod} onChange={e=>{setCheckoutMethod(e.target.value);checkoutPaymentRequestKey.current=null;}}>
+                    <option value="CASH">Cash</option><option value="MOMO">Mobile Money</option>
+                    <option value="BANK">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option>
+                  </select>
+                </Field>
+                <Field label="Payment reference (optional)">
+                  <input className="field" maxLength={120} value={checkoutReference} placeholder="MoMo or transfer reference"
+                    onChange={e=>{setCheckoutReference(e.target.value);checkoutPaymentRequestKey.current=null;}}/>
+                </Field>
+              </div>}
+              <p className="mt-3 text-xs leading-5 text-emerald-900">Payments entered here go directly to this item, not to older outstanding school fees. The sale and payment are saved together, or neither is saved.</p>
+            </div>
+            <button className="btn-primary" disabled={busy||!selected||!saleItem}><ShoppingBag size={16}/>{checkoutPayment==="NONE"?"Record sale — payment pending":"Record sale and item payment"}</button>
           </form>
-          <p className="mt-3 text-xs leading-5 text-muted">Sales reduce stock and create a student charge. The sale document is available immediately. If the student has not paid, it will be marked Payment Pending. Use Payments & receipts to record money received.</p>
+          <p className="mt-3 text-xs leading-5 text-muted">Item charges are recorded when purchased. If the student pays later, use Pay for item beside that sale so the payment goes to the intended purchase.</p>
           {latestSaleId&&(()=>{
             const sale=sales.find(x=>x.id===latestSaleId);
             const charge=charges.find(c=>c.sale_id===latestSaleId&&!c.voided_at);
@@ -712,8 +741,8 @@ export default function SchoolFinance() {
                   <button type="button" className="btn-secondary !py-2" disabled={!charge||saleDocumentBusy===s.id} onClick={()=>void saleDocument(s,"print")}>
                     <Printer size={15}/>Print
                   </button>
-                  {settlement&&settlement.balance>0&&student&&<button type="button" className="btn-secondary !py-2" onClick={()=>{setSelectedStudent(student.id);setView("payments");}}>
-                    <CreditCard size={15}/>Record payment
+                  {settlement&&settlement.balance>0&&student&&<button type="button" className="btn-secondary !py-2" onClick={()=>openSalePayment(s)}>
+                    <CreditCard size={15}/>Pay for item
                   </button>}
                 </div>
               </div>;
@@ -779,6 +808,74 @@ export default function SchoolFinance() {
         {!events.length&&<Empty>No finance activity recorded yet.</Empty>}</div>
       </section>}
 
+      {payingSale&&(()=>{
+        const student=w.students.find(st=>st.id===payingSale.student_id);
+        const item=items.find(i=>i.id===payingSale.item_id);
+        const charge=charges.find(c=>c.sale_id===payingSale.id&&!c.voided_at);
+        const settlement=charge?calculateSaleSettlement(payingSale,charge,allocations,payments):null;
+        const availablePayments=payments.filter(p=>
+          p.student_id===payingSale.student_id&&!p.voided_at &&
+          allocations.some(a=>a.payment_id===p.id&&a.charge_id!==charge?.id)
+        );
+        return <Modal title="Pay for this item purchase" onClose={()=>setPayingSale(null)}>
+          <div className="space-y-4">
+            <div className="rounded-xl bg-emerald-50 p-4">
+              <p className="font-bold text-emerald-950">{item?.name||"Item"} × {payingSale.quantity} · {student?fullName(student):"Student"}</p>
+              <p className="mt-2 text-sm">Item price: <strong>{ghs(Number(payingSale.total))}</strong></p>
+              <p className="mt-1 text-sm">Already applied to this item: <strong>{ghs(settlement?.paid||0)}</strong></p>
+              <p className="mt-1 text-sm">Remaining for this item: <strong className="text-rose-700">{ghs(settlement?.balance||0)}</strong></p>
+            </div>
+            <form className="space-y-4" onSubmit={submitItemPayment}>
+              <Field label="What happened to the payment?">
+                <select className="field" value={salePaymentMode} onChange={e=>{
+                  setSalePaymentMode(e.target.value as "NEW"|"REALLOCATE");
+                  itemPaymentRequestKey.current=null;reassignRequestKey.current=null;
+                }}>
+                  <option value="NEW">Record a new payment collected for this item</option>
+                  <option value="REALLOCATE">Correct a payment already recorded for this student</option>
+                </select>
+              </Field>
+              {salePaymentMode==="REALLOCATE"&&<div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <p><strong>Correct an earlier allocation — no new cash received.</strong> This transfers an already recorded payment from older charges to this item, increasing the older charge's outstanding balance accordingly.</p>
+                <Field label="Existing payment to correct">
+                  <select className="field" required value={existingPaymentId} onChange={e=>{setExistingPaymentId(e.target.value);reassignRequestKey.current=null;}}>
+                    <option value="">Select a payment</option>
+                    {availablePayments.map(p=><option key={p.id} value={p.id}>
+                      {p.receipt_number} · {ghs(Number(p.amount))} · {p.method}
+                    </option>)}
+                  </select>
+                </Field>
+                {availablePayments.length===0&&<p>No existing allocated payments were found for this learner. Choose Record a new payment instead.</p>}
+                <Field label="Reason for correction">
+                  <textarea className="field" required minLength={8} maxLength={500} rows={2}
+                    placeholder="e.g. Cash was paid for the uniform but posted against school fees"
+                    value={correctionReason} onChange={e=>{setItemCorrectionReason(e.target.value);reassignRequestKey.current=null;}}/>
+                </Field>
+              </div>}
+              <Field label="Amount to apply to this item (GHS)">
+                <input className="field" type="number" required step="0.01" min="0.01" max={settlement?.balance}
+                  value={itemPaymentAmount} onChange={e=>{setItemPaymentAmount(e.target.value);itemPaymentRequestKey.current=null;reassignRequestKey.current=null;}}/>
+              </Field>
+              {salePaymentMode==="NEW"&&<>
+                <Field label="Payment method">
+                  <select className="field" value={itemPaymentMethod} onChange={e=>{setItemPaymentMethod(e.target.value);itemPaymentRequestKey.current=null;}}>
+                    <option value="CASH">Cash</option><option value="MOMO">Mobile Money</option>
+                    <option value="BANK">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option>
+                  </select>
+                </Field>
+                <Field label="Payment reference (optional)">
+                  <input className="field" maxLength={120} value={itemPaymentReference}
+                    onChange={e=>{setItemPaymentReference(e.target.value);itemPaymentRequestKey.current=null;}}/>
+                </Field>
+              </>}
+              <button type="submit" className="btn-primary w-full"
+                disabled={busy||!charge||!settlement||settlement.balance<=0}>
+                <CreditCard size={16}/>{salePaymentMode==="REALLOCATE"?"Correct existing payment allocation":"Record item payment"}
+              </button>
+            </form>
+          </div>
+        </Modal>;
+      })()}
       {correctingCharge&&<Modal title="Correct or cancel a student fee" onClose={()=>{setCorrectingCharge(null);setCorrectionReason("");}}>
         <div className="space-y-4">
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
