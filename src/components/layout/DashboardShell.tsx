@@ -55,6 +55,23 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     id:string;kind:string;message:string;actor_name:string;created_at:string;
   }>>([]);
   const [financeReadIds,setFinanceReadIds] = useState<string[]>([]);
+  const [dismissedAlertKeys,setDismissedAlertKeys] = useState<string[]>([]);
+  const alertStorageKey = "edureport:read-advisories:" + w.school.id + ":" + w.profile.id;
+
+  useEffect(() => {
+    let saved:string[]=[];
+    try {
+      const value=JSON.parse(window.localStorage.getItem(alertStorageKey)||"[]");
+      if(Array.isArray(value))saved=value.filter((entry):entry is string=>typeof entry==="string");
+    }catch{ /* If storage is blocked, the dismissal is session-only. */ }
+    void Promise.resolve().then(()=>setDismissedAlertKeys(saved));
+  },[alertStorageKey]);
+
+  function dismissAlert(key:string){
+    const updated=Array.from(new Set([...dismissedAlertKeys,key])).slice(-150);
+    setDismissedAlertKeys(updated);
+    try{window.localStorage.setItem(alertStorageKey,JSON.stringify(updated));}catch{ /* session-only */ }
+  }
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -151,14 +168,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     return()=>{active=false;window.clearInterval(id);window.removeEventListener("focus",refresh);};
   },[w.profile.role,w.profile.id,w.school.id]);
 
-  async function readFinanceNotifications(){
-    const unread=financeEvents.filter(e=>!financeReadIds.includes(e.id));
+  async function readFinanceNotifications(ids:string[]){
+    const unread=ids.filter(id=>!financeReadIds.includes(id));
     if(!unread.length)return;
     const {error}=await browserClient().from("finance_event_reads").upsert(
-      unread.map(e=>({event_id:e.id,user_id:w.profile.id})),
+      unread.map(id=>({event_id:id,user_id:w.profile.id})),
       {onConflict:"event_id,user_id",ignoreDuplicates:true}
     );
-    if(!error)setFinanceReadIds(ids=>[...ids,...unread.map(e=>e.id)]);
+    if(!error)setFinanceReadIds(existing=>Array.from(new Set([...existing,...unread])));
   }
 
   const schoolActive = w.school.active && !w.school.deleted_at;
@@ -222,12 +239,26 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     (!w.classes.length ||
       !w.students.some((student) => student.status === "ACTIVE"));
 
-  const unreadFinanceCount=financeEvents.filter(e=>!financeReadIds.includes(e.id)).length;
+  const unreadFinanceEvents=financeEvents.filter(e=>!financeReadIds.includes(e.id));
+  const unreadFinanceCount=unreadFinanceEvents.length;
+  const reportAlertKey="reports:"+w.school.academic_year+":"+w.school.current_term+":"+reportAttention;
+  const termAlertKey="term-closed:"+w.school.academic_year+":"+w.school.current_term;
+  const setupAlertKey="setup:"+w.school.id;
+  const showReportAlert=reportAttention>0&&!dismissedAlertKeys.includes(reportAlertKey);
+  const showTermAlert=currentTerm?.status==="CLOSED"&&!dismissedAlertKeys.includes(termAlertKey);
+  const showSetupAlert=setupAttention&&!dismissedAlertKeys.includes(setupAlertKey);
+  const actionableCount=unreadFinanceCount+(showReportAlert?1:0)+(showTermAlert?1:0)+(showSetupAlert?1:0);
+  async function markAllNotificationsRead(){
+    await readFinanceNotifications(unreadFinanceEvents.map(e=>e.id));
+    if(showReportAlert)dismissAlert(reportAlertKey);
+    if(showTermAlert)dismissAlert(termAlertKey);
+    if(showSetupAlert)dismissAlert(setupAlertKey);
+  }
   const notificationCount =
     unreadFinanceCount + pendingRequests.length +
-    (reportAttention > 0 ? 1 : 0) +
-    (currentTerm?.status === "CLOSED" ? 1 : 0) +
-    (setupAttention ? 1 : 0);
+    (showReportAlert ? 1 : 0) +
+    (showTermAlert ? 1 : 0) +
+    (showSetupAlert ? 1 : 0);
 
   const nav = [
     {
@@ -611,7 +642,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 aria-expanded={notificationsOpen}
                 onClick={() => {
                   setNotificationsOpen(open=>!open);
-                  void readFinanceNotifications();
                 }}
               >
                 <Bell size={18} />
@@ -633,9 +663,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                         Items that may need your attention
                       </p>
                     </div>
-                    {notificationCount === 0 && (
-                      <CheckCircle2 size={18} className="text-emerald-600" />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {actionableCount>0&&<button type="button"
+                        className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"
+                        onClick={()=>void markAllNotificationsRead()}>
+                        Mark all as read
+                      </button>}
+                      {notificationCount===0&&<CheckCircle2 size={18} className="text-emerald-600"/>}
+                    </div>
                   </div>
 
                   <div className="max-h-[calc(100dvh-190px)] overflow-y-auto p-2 sm:max-h-[430px]">
@@ -672,11 +707,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                         </Link>
                       ))}
 
-                    {financeEvents.map(event=>(
+                    {unreadFinanceEvents.map(event=>(
                       <Link
                         key={event.id}
                         href="/dashboard/finance"
-                        onClick={()=>setNotificationsOpen(false)}
+                        onClick={()=>{void readFinanceNotifications([event.id]);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
@@ -691,10 +726,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       </Link>
                     ))}
 
-                    {reportAttention > 0 && (
+                    {showReportAlert && (
                       <Link
                         href="/dashboard/reports"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(reportAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-red-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700">
@@ -713,10 +748,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       </Link>
                     )}
 
-                    {currentTerm?.status === "CLOSED" && (
+                    {showTermAlert && (
                       <Link
                         href="/dashboard/terms"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(termAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-sky-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-700">
@@ -733,10 +768,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       </Link>
                     )}
 
-                    {setupAttention && (
+                    {showSetupAlert && (
                       <Link
                         href="/dashboard/classes"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(setupAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
