@@ -836,7 +836,7 @@ export default function SchoolFinance() {
                 </select>
               </Field>
               {salePaymentMode==="REALLOCATE"&&<div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                <p><strong>Correct an earlier allocation — no new cash received.</strong> This transfers an already recorded payment from older charges to this item, increasing the older charge's outstanding balance accordingly.</p>
+                <p><strong>Correct an earlier allocation — no new cash received.</strong> This transfers an already recorded payment from older charges to this item, increasing the older charge&apos;s outstanding balance accordingly.</p>
                 <Field label="Existing payment to correct">
                   <select className="field" required value={existingPaymentId} onChange={e=>{setExistingPaymentId(e.target.value);reassignRequestKey.current=null;}}>
                     <option value="">Select a payment</option>
