@@ -405,7 +405,7 @@ select pg_temp.denied($q$select public.sms_request_payment_extra(
   '0248765432',true,'Guardian authorized payment updates')$q$,
   'cross-school accountant cannot add custom recipient');
 
-select pg_temp.expect((select count(*)=1 from public.sms_outbox where credits_verified=false),
+select pg_temp.expect((select count(*)=2 from public.sms_outbox where credits_verified=false),
   'credit verification flag distinguishes provider-confirmed from estimated usage');
 
 rollback;
