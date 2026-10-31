@@ -25,15 +25,18 @@ const edgeLiveEnabled = Deno.env.get("ARKESEL_SMS_LIVE_ENABLED") === "true";
 // Default is the already-consumed ONE_USE_PILOT. Controlled multi-send operation
 // requires separate, explicit project-specific configuration and approval.
 const rolloutMode = Deno.env.get("EDUREPORT_SMS_OPERATION_MODE") || "ONE_USE_PILOT";
-const controlledLive = rolloutMode === "RESTRICTED_LIVE";
+const platformLive = rolloutMode === "PLATFORM_LIVE";
+const controlledLive = rolloutMode === "RESTRICTED_LIVE" || platformLive;
 const approvedSchoolIds = new Set(
   (Deno.env.get("EDUREPORT_SMS_APPROVED_SCHOOL_IDS") || "")
     .split(",").map((v) => v.trim()).filter(Boolean),
 );
 const controlledLiveConfigured = controlledLive &&
   Deno.env.get("EDUREPORT_SMS_LIVE_APPROVED") === "true" &&
-  approvedSchoolIds.size > 0 &&
-  [...approvedSchoolIds].every((id) => /^[0-9a-fA-F-]{36}$/.test(id));
+  (platformLive
+    ? Deno.env.get("EDUREPORT_SMS_ALL_SCHOOLS_APPROVED") === "true"
+    : approvedSchoolIds.size > 0 &&
+      [...approvedSchoolIds].every((id) => /^[0-9a-fA-F-]{36}$/.test(id)));
 const activeModeConfigured = controlledLive
   ? controlledLiveConfigured
   : rolloutMode === "ONE_USE_PILOT" && pilotConfigured;
@@ -147,10 +150,19 @@ Deno.serve(async (request: Request) => {
     const { data: payment, error: paymentError } = await admin.from("finance_payments")
       .select("school_id").eq("id", body.payment_id).maybeSingle();
     if (paymentError || !payment ||
-      (controlledLive ? !approvedSchoolIds.has(payment.school_id) : payment.school_id !== pilotSchool)) {
+      (platformLive ? false :
+        controlledLive ? !approvedSchoolIds.has(payment.school_id) : payment.school_id !== pilotSchool)) {
       return reply(origin, 403, { error: "SMS is restricted to an authorized school" });
     }
     permittedSchool = payment.school_id;
+    // Platform-wide live access still requires an ACTIVE school. Suspended
+    // or deleted tenants cannot trigger Arkesel even if their staff token
+    // remains valid. The database RPC independently checks user permissions.
+    const { data: school, error: schoolError } = await admin.from("schools")
+      .select("id,active,deleted_at").eq("id", permittedSchool).maybeSingle();
+    if (schoolError || !school || school.active !== true || school.deleted_at !== null) {
+      return reply(origin, 403, { error: "SMS is unavailable for inactive or deleted schools" });
+    }
 
     if (!controlledLive) {
       // The first pilot used exactly ONE SMS. It is permanently consumed,
@@ -227,9 +239,9 @@ Deno.serve(async (request: Request) => {
   for (const item of claimed || []) {
     try {
       if (item.sender_id !== "EDUREPORT" || item.school_id !== permittedSchool ||
-          (controlledLive
-            ? !approvedSchoolIds.has(item.school_id)
-            : !allowedPilotPhones.has(item.phone_e164))) {
+          (platformLive ? false :
+            controlledLive ? !approvedSchoolIds.has(item.school_id)
+              : !allowedPilotPhones.has(item.phone_e164))) {
         throw new Error("SMS school or recipient allowlist restriction failed");
       }
       const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
