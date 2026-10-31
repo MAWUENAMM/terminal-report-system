@@ -136,14 +136,14 @@ export default function CentralSMS() {
       {!info?.sending_enabled&&<div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <CircleAlert size={20} className="shrink-0"/>
         <div><strong>Live SMS is not activated.</strong>
-          <p className="mt-1 leading-6">EDUREPORT sender-ID network whitelisting is pending. A message arriving through the Arkesel dashboard does not prove API approval on all networks. Provider credentials and a restricted pilot activation are needed before phone delivery can be tested. Notify still creates the in-app alert without spending SMS credits.</p>
+          <p className="mt-1 leading-6">EduReport SMS is installed but outgoing sending is paused. Notify still creates the in-app alert without consuming SMS credits. Real SMS requires a working Arkesel API key, approved sender identity and both protected sending switches. The first staging test reached a handset, but delivery on other mobile networks must be verified separately.</p>
         </div>
       </div>}
       <section className="surface rounded-2xl p-5 sm:p-6">
         <div className="flex items-start gap-3">
           <ShieldCheck size={22} className="shrink-0 text-emerald-700"/>
           <div>
-            <h2 className="text-lg font-bold">Provider connection and pilot readiness</h2>
+            <h2 className="text-lg font-bold">Provider connection and SMS readiness</h2>
             <p className="mt-1 text-sm text-muted">Read-only checks from the secure server. API credentials and pilot phone numbers are never displayed here.</p>
           </div>
         </div>
