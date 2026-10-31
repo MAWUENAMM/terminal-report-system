@@ -213,8 +213,17 @@ Deno.serve(async (request: Request) => {
       }).eq("id", item.id).eq("status", "PROCESSING");
     }
   }
+  // Automatically pause the database switch after this ONE authorized pilot
+  // attempt, regardless of provider acceptance. The lifetime outbox check also
+  // keeps it closed if this update fails or a worker exits unexpectedly.
+  const { error: pauseError } = await admin.from("sms_central_settings")
+    .update({ sending_enabled: false, updated_at: new Date().toISOString() })
+    .eq("singleton", true);
   return reply(origin, 200, {
     mode: "LIVE", queued: ids.length, submitted, failed, unknown,
-    message: "SUBMITTED means accepted by Arkesel, not delivered to the handset."
+    pilot_paused: !pauseError,
+    message: pauseError
+      ? "Pilot request completed but automatic pause needs administrator attention; one-use guard remains in force."
+      : "The one-use SMS pilot is now paused. SUBMITTED means accepted by Arkesel, not handset delivery."
   });
 });
