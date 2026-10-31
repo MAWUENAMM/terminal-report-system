@@ -251,7 +251,7 @@ export default function SchoolFinance() {
   async function notify(payment:FinancePayment){
     const extra=extraSmsDetails[payment.id];
     const custom=Boolean(extra?.phone.trim());
-    if(custom){
+    if(custom&&extra){
       if(w.profile.role!=="ADMIN")return setError("Only the School Administrator may add an SMS recipient.");
       if(!/^((0[25]\d{8})|(233[25]\d{8})|(\+233[25]\d{8}))$/.test(extra.phone.replace(/[\s()-]/g,"")))
         return setError("Enter a valid Ghanaian mobile number for the additional recipient.");
@@ -263,7 +263,7 @@ export default function SchoolFinance() {
     const success=await run(async()=>{
       await invoke("finance_notify_payment",{p_payment_id:payment.id});
       const {data,error:gatewayError}=await browserClient().functions.invoke("sms-gateway",{
-        body:{action:"notify",payment_id:payment.id,...(custom?{
+        body:{action:"notify",payment_id:payment.id,...(custom&&extra?{
           extra_phone:extra.phone.trim(),extra_consent:extra.consent,extra_reason:extra.reason.trim()
         }:{})}
       });
