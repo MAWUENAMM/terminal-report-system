@@ -707,7 +707,7 @@ export default function SchoolFinance() {
                         ...prev,[p.id]:{phone:prev[p.id]?.phone||"",
                           reason:prev[p.id]?.reason||"",consent:e.target.checked}
                       }))}/>
-                    <span>I confirm that this person has consented to receive this student's payment details by SMS and is authorized to view them.</span>
+                    <span>I confirm that this person has consented to receive this student&apos;s payment details by SMS and is authorized to view them.</span>
                   </label>
                   <p className="text-xs text-muted">Click Notify above to alert opted-in finance staff and this optional recipient. One extra number per payment; each SMS may consume a credit.</p>
                 </div>
