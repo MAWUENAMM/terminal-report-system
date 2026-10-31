@@ -22,6 +22,21 @@ const pilotConfigured =
   [...allowedPilotPhones].every((phone) => /^\+233[25][0-9]{8}$/.test(phone));
 const providerKey = Deno.env.get("ARKESEL_API_KEY") || "";
 const edgeLiveEnabled = Deno.env.get("ARKESEL_SMS_LIVE_ENABLED") === "true";
+// Default is the already-consumed ONE_USE_PILOT. Controlled multi-send operation
+// requires separate, explicit project-specific configuration and approval.
+const rolloutMode = Deno.env.get("EDUREPORT_SMS_OPERATION_MODE") || "ONE_USE_PILOT";
+const controlledLive = rolloutMode === "RESTRICTED_LIVE";
+const approvedSchoolIds = new Set(
+  (Deno.env.get("EDUREPORT_SMS_APPROVED_SCHOOL_IDS") || "")
+    .split(",").map((v) => v.trim()).filter(Boolean),
+);
+const controlledLiveConfigured = controlledLive &&
+  Deno.env.get("EDUREPORT_SMS_LIVE_APPROVED") === "true" &&
+  approvedSchoolIds.size > 0 &&
+  [...approvedSchoolIds].every((id) => /^[0-9a-fA-F-]{36}$/.test(id));
+const activeModeConfigured = controlledLive
+  ? controlledLiveConfigured
+  : rolloutMode === "ONE_USE_PILOT" && pilotConfigured;
 const allowedOrigins = (origin: string) =>
   /^https:\/\/terminal-report-system(?:-[a-z0-9-]+-mawuenam)?\.vercel\.app$/.test(origin) ||
   origin === "http://localhost:3000";
@@ -81,7 +96,8 @@ Deno.serve(async (request: Request) => {
     const readiness = {
       api_key_configured: Boolean(providerKey),
       edge_live_enabled: edgeLiveEnabled,
-      pilot_restrictions_configured: pilotRecipientReady,
+      pilot_restrictions_configured: controlledLive ? controlledLiveConfigured : pilotRecipientReady,
+      operation_mode: rolloutMode,
       database_sending_enabled: data?.sending_enabled === true,
       sender_id: data?.sender_id || "EDUREPORT",
       // A balance check NEVER proves sender ID/carrier approval or delivery.
@@ -120,63 +136,63 @@ Deno.serve(async (request: Request) => {
   if (configError || !config) return reply(origin, 503, { error: "SMS configuration unavailable" });
   if (config.sender_id !== "EDUREPORT") return reply(origin, 409, { error: "Expected EDUREPORT sender configuration" });
 
+  let permittedSchool = "";
   if (config.sending_enabled) {
-    if (!edgeLiveEnabled || !providerKey || !pilotConfigured) {
+    if (!edgeLiveEnabled || !providerKey || !activeModeConfigured) {
       return reply(origin, 200, {
         mode: "CONFIG_PENDING", queued: 0,
-        message: "SMS is paused. API key, pilot school/recipients and two activation gates are required.",
+        message: "SMS is paused until the selected operating mode, scoped schools, provider key, and both activation controls are configured.",
       });
     }
-    // During the one-use staging pilot, the custom number must also be
-    // explicitly permitted; NEVER let a browser-supplied number bypass allowlists.
-    if (customRequested) {
-      const normalized = body.extra_phone!.replace(/[\s()-]/g, "")
-        .replace(/^0([25]\d{8})$/, "+233$1")
-        .replace(/^233([25]\d{8})$/, "+233$1");
-      if (!allowedPilotPhones.has(normalized)) {
-        return reply(origin, 403, { error: "The extra phone is not on the staging pilot allowlist" });
-      }
-    }
-    // This specifically authorizes ONE MESSAGE TOTAL, not one message per
-    // calendar day. Any previously created outgoing message permanently closes
-    // this staging pilot until a new reviewed release and authorization.
-    const { count: previousPilotMessages, error: countError } = await admin.from("sms_outbox")
-      .select("id", { count: "exact", head: true });
-    if (countError || previousPilotMessages !== 0) {
-      return reply(origin, 409, {
-        error: "The one-message SMS pilot has already been used or cannot be verified. No additional SMS will be queued.",
-      });
-    }
-    // This is a temporary, explicit pilot ONLY. Authenticated staff must still
-    // pass the existing school/finance authorization inside sms_request_payment.
     const { data: payment, error: paymentError } = await admin.from("finance_payments")
       .select("school_id").eq("id", body.payment_id).maybeSingle();
-    if (paymentError || !payment || payment.school_id !== pilotSchool) {
-      return reply(origin, 403, { error: "Live SMS is restricted to the authorized pilot school" });
+    if (paymentError || !payment ||
+      (controlledLive ? !approvedSchoolIds.has(payment.school_id) : payment.school_id !== pilotSchool)) {
+      return reply(origin, 403, { error: "SMS is restricted to an authorized school" });
     }
+    permittedSchool = payment.school_id;
+
+    if (!controlledLive) {
+      // The first pilot used exactly ONE SMS. It is permanently consumed,
+      // irrespective of daily limit resets and additional credits purchased.
+      const { count: previousPilotMessages, error: countError } = await admin.from("sms_outbox")
+        .select("id", { count: "exact", head: true });
+      if (countError || previousPilotMessages !== 0) {
+        return reply(origin, 409, {
+          error: "The one-message SMS pilot has already been used. No additional SMS will be queued.",
+        });
+      }
+      if (customRequested) {
+        const normalized = body.extra_phone!.replace(/[\\s()-]/g, "")
+          .replace(/^0([25]\\d{8})$/, "+233$1")
+          .replace(/^233([25]\\d{8})$/, "+233$1");
+        if (!allowedPilotPhones.has(normalized)) {
+          return reply(origin, 403, { error: "The extra phone is not on the one-use pilot allowlist" });
+        }
+      }
+    }
+
     const { data: recipients, error: recipientsError } = await admin.from("school_users")
-      .select("phone").eq("school_id", pilotSchool).eq("active", true)
+      .select("phone").eq("school_id", permittedSchool).eq("active", true)
       .eq("must_change_password", false).eq("sms_opt_in", true)
       .in("role", ["ADMIN", "ACCOUNTANT"]);
-    if (recipientsError) return reply(origin, 503, { error: "Unable to verify pilot recipients" });
-    // One handset may be registered to multiple staff accounts. Never spend two
-    // SMS credits on that handset for the same payment during the pilot.
-    const pilotPhones = (recipients || []).map((r) => r.phone);
-    if (new Set(pilotPhones).size !== pilotPhones.length) {
+    if (recipientsError) return reply(origin, 503, { error: "Unable to verify opted-in staff recipients" });
+    const staffPhones = (recipients || []).map((r) => r.phone);
+    if (new Set(staffPhones).size !== staffPhones.length) {
       return reply(origin, 409, {
-        error: "Multiple opted-in staff share a phone number. Use unique pilot recipient phones or opt out one account before sending.",
+        error: "Two opted-in finance staff share the same phone number. Correct duplicates before any SMS can be queued.",
       });
     }
-    if (pilotPhones.length === 0) {
-      return reply(origin, 409, { error: "No opted-in pilot recipients. No SMS queued." });
+    if (!controlledLive) {
+      if (staffPhones.length !== 1 || staffPhones.some((phone) => !allowedPilotPhones.has(phone))) {
+        return reply(origin, 409, {
+          error: "One-use pilot requires exactly one eligible, allowlisted staff phone.",
+        });
+      }
     }
-    // Fail the whole attempt rather than silently sending some recipients or
-    // queueing phone numbers outside the authorized pilot allowlist.
-    if ((recipients || []).some((r) => !allowedPilotPhones.has(r.phone))) {
-      return reply(origin, 409, {
-        error: "An opted-in staff phone is not on the pilot allowlist. No SMS was queued.",
-      });
-    }
+    // Restricted live mode may include a one-off extra number ONLY through
+    // sms_request_payment_extra's ADMIN/consent/recipient-reason checks.
+    // The client never chooses a school or outgoing message body.
   }
 
   // Privileged queuing happens in PostgreSQL, not from browser-provided phones.
@@ -210,10 +226,11 @@ Deno.serve(async (request: Request) => {
   let submitted = 0, failed = 0, unknown = 0;
   for (const item of claimed || []) {
     try {
-      if (item.sender_id !== "EDUREPORT" || item.school_id !== pilotSchool ||
-          !allowedPilotPhones.has(item.phone_e164)) {
-        // Never silently convert an unauthorized destination into a live send.
-        throw new Error("Pilot restriction failed");
+      if (item.sender_id !== "EDUREPORT" || item.school_id !== permittedSchool ||
+          (controlledLive
+            ? !approvedSchoolIds.has(item.school_id)
+            : !allowedPilotPhones.has(item.phone_e164))) {
+        throw new Error("SMS school or recipient allowlist restriction failed");
       }
       const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
         method: "POST", signal: AbortSignal.timeout(12000),
@@ -257,6 +274,12 @@ Deno.serve(async (request: Request) => {
         updated_at: new Date().toISOString(),
       }).eq("id", item.id).eq("status", "PROCESSING");
     }
+  }
+  if (controlledLive) {
+    return reply(origin, 200, {
+      mode: "LIVE", queued: ids.length, submitted, failed, unknown,
+      message: "SUBMITTED means Arkesel accepted the request, not that the handset received it. No automatic retries are attempted.",
+    });
   }
   // Automatically pause the database switch after this ONE authorized pilot
   // attempt, regardless of provider acceptance. The lifetime outbox check also
