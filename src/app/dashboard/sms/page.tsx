@@ -93,7 +93,7 @@ export default function CentralSMS() {
   const checks = [
     { label: "Arkesel API key", ready: readiness?.api_key_configured ?? false },
     { label: "Arkesel balance API responds", ready: gatewayConnected },
-    { label: "Pilot school and phone allowlist", ready: readiness?.pilot_restrictions_configured ?? false },
+    { label: "Authorized school and recipient restrictions", ready: readiness?.pilot_restrictions_configured ?? false },
     { label: "Edge Function live-send switch", ready: readiness?.edge_live_enabled ?? false },
     { label: "Database sending switch", ready: readiness?.database_sending_enabled ?? false },
   ];
