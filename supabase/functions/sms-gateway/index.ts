@@ -163,9 +163,9 @@ Deno.serve(async (request: Request) => {
         });
       }
       if (customRequested) {
-        const normalized = body.extra_phone!.replace(/[\\s()-]/g, "")
-          .replace(/^0([25]\\d{8})$/, "+233$1")
-          .replace(/^233([25]\\d{8})$/, "+233$1");
+        const normalized = body.extra_phone!.replace(/[\s()-]/g, "")
+          .replace(/^0([25]\d{8})$/, "+233$1")
+          .replace(/^233([25]\d{8})$/, "+233$1");
         if (!allowedPilotPhones.has(normalized)) {
           return reply(origin, 403, { error: "The extra phone is not on the one-use pilot allowlist" });
         }
