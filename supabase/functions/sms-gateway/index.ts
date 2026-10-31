@@ -65,10 +65,23 @@ Deno.serve(async (request: Request) => {
     // This is a platform-only endpoint; the RPC checks platform_operators.
     const { data, error } = await userClient.rpc("sms_platform_dashboard");
     if (error) return reply(origin, 403, { error: "Platform Administrator access required" });
+    // Make the readiness badge verify the CURRENT opted-in recipient(s),
+    // rather than merely confirming that a well-formed phone secret exists.
+    // This one-use pilot must resolve to exactly one authorized handset.
+    let pilotRecipientReady = false;
+    if (pilotConfigured) {
+      const { data: staff, error: staffError } = await admin.from("school_users")
+        .select("phone").eq("school_id", pilotSchool).eq("active", true)
+        .eq("must_change_password", false).eq("sms_opt_in", true)
+        .in("role", ["ADMIN", "ACCOUNTANT"]);
+      pilotRecipientReady = !staffError && Array.isArray(staff) &&
+        staff.length === 1 && allowedPilotPhones.size === 1 &&
+        allowedPilotPhones.has(staff[0].phone);
+    }
     const readiness = {
       api_key_configured: Boolean(providerKey),
       edge_live_enabled: edgeLiveEnabled,
-      pilot_restrictions_configured: pilotConfigured,
+      pilot_restrictions_configured: pilotRecipientReady,
       database_sending_enabled: data?.sending_enabled === true,
       sender_id: data?.sender_id || "EDUREPORT",
       // A balance check NEVER proves sender ID/carrier approval or delivery.
