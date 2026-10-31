@@ -230,4 +230,90 @@ select pg_temp.denied($q$select public.finance_reassign_payment_to_sale(
  1,'Improper cross-school finance correction','a6000000-0000-4000-8000-000000000041')$q$,
  'cross-school correction prohibited');
 
+
+-- EDUREPORT SMS: explicit consent, private central reporting, disabled-by-default
+-- provider, one school per payment, daily limits, and queue idempotency.
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+select pg_temp.expect((select count(*)=0 from public.sms_outbox),'outbox initially empty');
+select pg_temp.expect((select count(*)=0 from public.sms_central_settings),'central config hidden from accountant');
+
+select public.sms_save_my_preferences('0241234567',true);
+select pg_temp.expect(
+ (select sms_opt_in and phone='+233241234567' from public.school_users
+  where id='a1000000-0000-4000-8000-000000000002'),
+ 'accountant phone normalized and opted in');
+select pg_temp.expect(
+ (public.sms_request_payment((select id from public.finance_payments
+   where request_key='a6000000-0000-4000-8000-000000000021'))->>'mode')='PREVIEW',
+ 'sender pending; payment notify remains preview-only');
+select pg_temp.expect((select count(*)=0 from public.sms_outbox),
+ 'disabled provider creates no records and costs no credits');
+
+select pg_temp.denied($q$select public.sms_admin_update_staff_phone(
+ 'a1000000-0000-4000-8000-000000000001','0241234567')$q$,
+ 'accountant may not set admin phone');
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.sms_save_my_preferences('0241234567',true)$q$,
+ 'teacher must not opt in for finance SMS');
+select pg_temp.denied($q$select public.sms_request_payment(
+ 'a6000000-0000-4000-8000-000000000001')$q$,
+ 'teacher cannot send SMS');
+select pg_temp.denied($q$select public.sms_platform_dashboard()$q$,
+ 'teacher cannot see central SMS monitoring');
+
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.sms_platform_dashboard()$q$,
+ 'other school accountant cannot see central dashboard');
+select pg_temp.denied($q$select public.sms_request_payment(
+ (select id from public.finance_payments where request_key=
+  'a6000000-0000-4000-8000-000000000021')$q$,
+ 'other school cannot notify payment');
+
+-- Only a Platform Operator may view cross-school usage metrics.
+reset role;
+insert into public.platform_operators(auth_user_id)
+values('a1000000-0000-4000-8000-000000000001');
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select pg_temp.expect(public.sms_platform_dashboard()->>'sender_id'='EDUREPORT',
+ 'platform operator sees central sender');
+select pg_temp.expect(public.sms_platform_dashboard()->>'sending_enabled'='false',
+ 'production messaging explicitly disabled by default');
+
+-- Admin updates another staff phone but does NOT consent on their behalf.
+select public.sms_admin_update_staff_phone(
+ 'a1000000-0000-4000-8000-000000000002','0551234567');
+select pg_temp.expect(
+ (select phone='+233551234567' and not sms_opt_in from public.school_users
+ where id='a1000000-0000-4000-8000-000000000002'),
+ 'updating staff phone resets their consent');
+
+-- Test internal queue with sending enabled INSIDE the disposable transaction only.
+reset role;
+update public.sms_central_settings set sending_enabled=true where singleton=true;
+set local role authenticated;
+select public.sms_save_my_preferences('0247654321',true);
+select pg_temp.expect(
+ (public.sms_request_payment((select id from public.finance_payments
+ where request_key='a6000000-0000-4000-8000-000000000021'))->>'mode')='READY',
+ 'authorized admin may queue consented recipients');
+select pg_temp.expect(
+ (select count(*)=1 from public.sms_outbox
+ where recipient_staff_id='a1000000-0000-4000-8000-000000000001'
+ and status='QUEUED'),
+ 'one outgoing message for opted-in administrator');
+select public.sms_request_payment((select id from public.finance_payments
+ where request_key='a6000000-0000-4000-8000-000000000021'));
+select pg_temp.expect((select count(*)=1 from public.sms_outbox),
+ 'repeated notify is idempotent per payment/recipient');
+select pg_temp.expect((select count(*)=0 from public.sms_outbox where char_length(body)>160),
+ 'notification stays within one standard SMS segment');
+
+-- Scope isolation is still enforced after enabling the provider mode.
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.sms_request_payment(
+ (select id from public.finance_payments where request_key=
+ 'a6000000-0000-4000-8000-000000000021')$q$,
+ 'cross-school SMS request remains blocked after activation');
+
 rollback;
