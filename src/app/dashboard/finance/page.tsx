@@ -745,7 +745,7 @@ export default function SchoolFinance() {
                     onChange={e=>setExtraSmsPhones(prev=>({...prev,[p.id]:e.target.value}))}/>
                 </Field>
                 <p className="mt-2 text-xs text-muted">
-                  Enter the recipient's number, then click Notify above. You'll confirm the recipient before anything is sent. Each SMS may use a credit.
+                  Enter the recipient&apos;s number, then click Notify above. You&apos;ll confirm the recipient before anything is sent. Each SMS may use a credit.
                 </p>
               </div>}
           </div>)}
@@ -1043,7 +1043,7 @@ export default function SchoolFinance() {
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-700">
-            By confirming, you confirm this person is authorized and has agreed to receive the student's payment information. SMS delivery may take a few minutes and may use a credit.
+            By confirming, you confirm this person is authorized and has agreed to receive the student&apos;s payment information. SMS delivery may take a few minutes and may use a credit.
           </p>
           <div className="flex flex-wrap justify-end gap-3">
             <button type="button" className="btn-secondary" onClick={()=>setConfirmSms(null)}>Cancel</button>
