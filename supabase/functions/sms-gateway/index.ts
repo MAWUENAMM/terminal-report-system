@@ -170,9 +170,10 @@ Deno.serve(async (request: Request) => {
     }
 
     if (firstProductionSend) {
-      if (customRequested) return reply(origin, 409, {
-        error: "The initial live test allows only one opted-in staff handset. Leave the additional recipient blank.",
-      });
+      // For the single-message production launch, either one opted-in staff
+      // phone OR one consent-confirmed custom phone may be used, never both.
+      // sms_request_payment_extra enforces school ADMIN authorization and
+      // records the explicit confirmation and reason for that custom phone.
       const { count: recorded, error: recordError } = await admin.from("sms_outbox")
         .select("id", { count: "exact", head: true });
       if (recordError || recorded !== 0) return reply(origin, 409, {
@@ -210,9 +211,13 @@ Deno.serve(async (request: Request) => {
         error: "Two opted-in finance staff share the same phone number. Correct duplicates before any SMS can be queued.",
       });
     }
-    if (firstProductionSend && staffPhones.length !== 1) return reply(origin, 409, {
-      error: "For the initial live test, exactly one finance staff member must opt in to SMS.",
-    });
+    if (firstProductionSend && staffPhones.length !== (customRequested ? 0 : 1)) {
+      return reply(origin, 409, {
+        error: customRequested
+          ? "For the first one-credit live test, opt out staff recipients before using an additional consented phone."
+          : "For the first one-credit live test, exactly one finance staff member must opt in to SMS.",
+      });
+    }
     if (!controlledLive) {
       if (staffPhones.length !== 1 || staffPhones.some((phone) => !allowedPilotPhones.has(phone))) {
         return reply(origin, 409, {
