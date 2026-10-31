@@ -100,7 +100,7 @@ export default function CentralSMS() {
   const cards = [
     { title: "SMS credits remaining", value: credits ?? "—", sub: gatewayConnected ? "Provider balance" : "Connect Arkesel securely to display this", icon: Wallet },
     { title: "Requests submitted", value: total?.submitted ?? 0, sub: "Accepted by Arkesel, not necessarily delivered", icon: Send },
-    { title: "Credits recorded", value: total?.credits_used ?? 0, sub: "Confirmed reported usage by provider", icon: CreditCard },
+    { title: "Estimated SMS credits used", value: total?.credits_used ?? 0, sub: "Estimate if Arkesel did not return per-message usage; compare with provider balance", icon: CreditCard },
     { title: "Opted-in finance staff", value: info?.schools.reduce((n, s)=>n+Number(s.opted_in_staff),0) ?? 0, sub: "School Admins and Accountants who opted in", icon: BellRing },
   ];
   return (
