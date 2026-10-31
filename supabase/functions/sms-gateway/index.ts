@@ -63,7 +63,7 @@ Deno.serve(async (request: Request) => {
   const token = authorization.replace(/^Bearer\s+/i, "").trim();
   if (!token || !url || !anon || !serviceRole) return reply(origin, 401, { error: "Not signed in" });
 
-  let body: { action?: string; payment_id?: string; extra_phone?: string; extra_consent?: boolean; extra_reason?: string };
+  let body: { action?: string; payment_id?: string; extra_phone?: string; extra_consent?: boolean; extra_reason?: string; test_phone?: string; test_request_id?: string; test_confirmed?: boolean };
   try {
     if (Number(request.headers.get("content-length") || 0) > 4096) throw new Error("Request too large");
     body = await request.json();
@@ -118,6 +118,97 @@ Deno.serve(async (request: Request) => {
     } catch {
       return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness });
     }
+  }
+
+  if (body.action === "test_send") {
+    // Explicitly requested repeatable diagnostic SMS: platform operator only.
+    // No student or school payment data is read, inserted or changed.
+    const { error: operatorError } = await userClient.rpc("sms_platform_dashboard");
+    if (operatorError) return reply(origin, 403, { error: "Platform Administrator access required" });
+    if (!platformLive || !activeModeConfigured || !edgeLiveEnabled || !providerKey) {
+      return reply(origin, 409, { error: "Platform SMS live mode is not fully configured" });
+    }
+    const { data: configuration, error: settingsError } = await admin
+      .from("sms_central_settings").select("sending_enabled,sender_id,global_daily_limit").eq("singleton",true).single();
+    if (settingsError || !configuration || !configuration.sending_enabled ||
+        configuration.sender_id !== "EDUREPORT") {
+      return reply(origin, 409, { error: "SMS sending is disabled" });
+    }
+    if (body.test_confirmed !== true ||
+      !/^[0-9a-fA-F-]{36}$/.test(body.test_request_id || "")) {
+      return reply(origin, 400, { error: "Confirm this paid test before sending" });
+    }
+    const phone = String(body.test_phone || "").replace(/[\s()-]/g, "")
+      .replace(/^0([25]\d{8})$/, "+233$1")
+      .replace(/^233([25]\d{8})$/, "+233$1");
+    if (!/^\+233[25][0-9]{8}$/.test(phone)) {
+      return reply(origin, 400, { error: "Enter a valid Ghana mobile number" });
+    }
+    const { count: financeToday, error: financeCountError } = await admin.from("sms_outbox")
+      .select("id",{head:true,count:"exact"}).gte("created_at",new Date().toISOString().slice(0,10)+"T00:00:00Z")
+      .in("status",["QUEUED","PROCESSING","SUBMITTED","DELIVERED","UNKNOWN"]);
+    const { count: testsToday, error: testCountError } = await admin.from("sms_test_outbox")
+      .select("id",{head:true,count:"exact"}).gte("created_at",new Date().toISOString().slice(0,10)+"T00:00:00Z")
+      .in("status",["QUEUED","PROCESSING","SUBMITTED","DELIVERED","UNKNOWN"]);
+    if (financeCountError || testCountError ||
+        (financeToday ?? 0)+(testsToday ?? 0) >= configuration.global_daily_limit) {
+      return reply(origin, 409, { error: "EduReport central SMS daily budget is exhausted or unavailable" });
+    }
+    // Fixed provider diagnostic text, with no information about students or payments.
+    const message = "EDUREPORT: This is a live SMS test from the EduReport platform. No student or payment records were changed.";
+    const { data: created, error: createError } = await admin.from("sms_test_outbox")
+      .upsert({
+        request_key: body.test_request_id, requested_by: user.data.user.id,
+        phone_e164: phone, sender_id: "EDUREPORT", message, status: "QUEUED",
+      }, { onConflict: "request_key", ignoreDuplicates: true })
+      .select("id").maybeSingle();
+    if (createError) return reply(origin, 500, { error: "Unable to record SMS test request" });
+    if (!created) return reply(origin, 200, {
+      mode: "DUPLICATE", submitted: 0,
+      message: "This test request was already recorded; it will not be sent twice.",
+    });
+    const { data: claimed, error: claimError } = await admin.from("sms_test_outbox")
+      .update({status:"PROCESSING",send_started_at:new Date().toISOString(),updated_at:new Date().toISOString()})
+      .eq("id",created.id).eq("status","QUEUED").select("id").maybeSingle();
+    if (claimError || !claimed) return reply(origin, 500, { error: "Unable to claim SMS test safely" });
+    let status = "UNKNOWN", credits = 0, verified = false, providerId: string | null = null;
+    let errorMessage: string | null = "Provider result is uncertain. Check Arkesel before resending.";
+    try {
+      const response = await fetch("https://sms.arkesel.com/api/v2/sms/send",{
+        method:"POST", signal:AbortSignal.timeout(12000),
+        headers:{"Content-Type":"application/json","api-key":providerKey},
+        body: JSON.stringify({sender:"EDUREPORT",message,recipients:[phone]})
+      });
+      const value = await response.json().catch(()=>null);
+      const item = Array.isArray(value?.data) ? value.data[0] : value?.data;
+      const accepted = response.ok && value?.status === "success" &&
+        typeof item?.id === "string" && item.id.length > 0;
+      const ambiguous = response.ok && value?.status === "success" && !accepted;
+      status = accepted ? "SUBMITTED" : ambiguous ? "UNKNOWN" : "FAILED";
+      errorMessage = accepted ? null : ambiguous ? "Provider acknowledged request without a message ID" :
+        "Arkesel did not accept the test SMS; inspect the provider dashboard.";
+      providerId = accepted ? item.id : null;
+      const raw = item?.credits_used ?? value?.credits_used;
+      verified = accepted && Number.isSafeInteger(Number(raw)) && raw!==undefined && raw!==null &&
+        Number(raw)>=0 && (typeof raw==="number" || typeof raw==="string" && /^\d+$/.test(raw));
+      credits = accepted ? verified ? Number(raw) : 1 : 0;
+    } catch {
+      // No automatic retry. A timeout can mean that the provider accepted SMS.
+    }
+    const { error: saveError } = await admin.from("sms_test_outbox")
+      .update({status,provider_message_id:providerId,credits_used:credits,
+        credits_verified:verified,last_error:errorMessage,updated_at:new Date().toISOString()})
+      .eq("id",created.id).eq("status","PROCESSING");
+    if (saveError) return reply(origin, 200, {
+      mode:"UNKNOWN",submitted:0,message:"Provider submission may have occurred. Check Arkesel before repeating.",
+    });
+    return reply(origin, 200, {
+      mode:status==="SUBMITTED" ? "TEST_SUBMITTED" : status==="FAILED" ? "TEST_FAILED" : "UNKNOWN",
+      submitted:status==="SUBMITTED" ? 1 : 0,
+      message:status==="SUBMITTED"
+        ? "Arkesel accepted the test SMS. Delivery to the handset may take a few minutes."
+        : "No confirmed submission. Check the Arkesel dashboard before resending.",
+    });
   }
 
   if (body.action !== "notify" || !/^[0-9a-fA-F-]{36}$/.test(body.payment_id || "")) {
