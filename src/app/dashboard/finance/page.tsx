@@ -57,6 +57,7 @@ export default function SchoolFinance() {
   const [latestSaleId,setLatestSaleId]=useState<string|null>(null);
   const [saleDocumentBusy,setSaleDocumentBusy]=useState<string|null>(null);
   const [events,setEvents]=useState<Event[]>([]);
+  const [smsFeedback,setSmsFeedback]=useState("");
   const [images,setImages]=useState<Record<string,string>>({});
   const [search,setSearch]=useState("");
   const [selectedStudent,setSelectedStudent]=useState("");
@@ -245,7 +246,32 @@ export default function SchoolFinance() {
     await perform(async()=>{await invoke("finance_void_payment",{p_payment_id:payment.id,p_reason:reason});},"Payment reversed and recorded in audit history.");
   }
   async function notify(payment:FinancePayment){
-    await perform(async()=>{await invoke("finance_notify_payment",{p_payment_id:payment.id});},"Payment notification sent to finance administrators.");
+    setSmsFeedback("");
+    let message="An in-app payment alert was recorded.";
+    const success=await run(async()=>{
+      await invoke("finance_notify_payment",{p_payment_id:payment.id});
+      const {data,error:gatewayError}=await browserClient().functions.invoke("sms-gateway",{
+        body:{action:"notify",payment_id:payment.id}
+      });
+      if(gatewayError){
+        message="The in-app alert was recorded, but SMS could not be checked. No delivery is confirmed.";
+        return;
+      }
+      if(data?.mode==="PREVIEW"){
+        message="In-app alert recorded. Real SMS is not enabled yet. "+
+          (data.eligible||0)+" staff members are opted in to receive SMS when the service is activated.";
+      }else if(data?.mode==="LIVE"){
+        message="In-app alert recorded. Arkesel accepted "+
+          (data.submitted||0)+" SMS request(s). Delivery to phones is not yet confirmed.";
+      }else if(data?.mode==="CONFIG_PENDING"){
+        message="In-app alert recorded. SMS sending is waiting for secure provider activation.";
+      }else if(data?.mode==="READY"){
+        message="In-app alert recorded. No new SMS requests; duplicate alerts were prevented.";
+      }else{
+        message="In-app alert recorded. SMS delivery status is unavailable.";
+      }
+    },"Payment notification processed.");
+    if(success){setSmsFeedback(message);await load();}
   }
   async function saveItem(event:FormEvent){
     event.preventDefault();
@@ -429,6 +455,10 @@ export default function SchoolFinance() {
         </button>
       </PageHeader>
 
+      {smsFeedback&&<div role="status" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <BellRing size={18} className="mt-0.5 shrink-0"/><div className="flex-1">{smsFeedback}</div>
+        <button type="button" className="text-amber-800" onClick={()=>setSmsFeedback("")} aria-label="Dismiss SMS status">✕</button>
+      </div>}
       {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
       {loading&&<p role="status" className="text-sm text-muted">Refreshing finance records…</p>}
 
@@ -627,7 +657,7 @@ export default function SchoolFinance() {
               <div className="flex flex-wrap gap-2">
                 <button className="btn-secondary !py-2" onClick={()=>void receipt(p)}><ArrowDownToLine size={15}/>Receipt</button>
                 {!p.voided_at&&<>
-                  <button className="btn-secondary !py-2" disabled={busy} onClick={()=>void notify(p)}><BellRing size={15}/>Notify</button>
+                  <button className="btn-secondary !py-2" disabled={busy} onClick={()=>void notify(p)}><BellRing size={15}/>Notify in-app + SMS</button>
                   <button className="btn-secondary !py-2 !text-red-700" disabled={busy} onClick={()=>void reverse(p)}>Reverse</button>
                 </>}
               </div>
