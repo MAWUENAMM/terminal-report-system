@@ -147,7 +147,7 @@ export default function CentralSMS() {
       <div className="grid gap-4 md:grid-cols-2">
         <section className="surface rounded-2xl p-5">
           <div className="flex items-center gap-2"><Activity size={19} className="text-emerald-700"/><h3 className="font-bold">Daily sending protection</h3></div>
-          <p className="mt-3 text-sm text-muted">Current server-enforced limits protect EduReport's central SMS budget.</p>
+          <p className="mt-3 text-sm text-muted">Current server-enforced limits protect EduReport&apos;s central SMS budget.</p>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-muted">Across all schools/day</p><p className="mt-1 text-xl font-bold">{info?.global_daily_limit ?? "—"}</p></div>
             <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-muted">Per school/day</p><p className="mt-1 text-xl font-bold">{info?.school_daily_limit ?? "—"}</p></div>
