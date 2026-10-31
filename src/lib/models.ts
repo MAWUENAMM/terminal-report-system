@@ -18,6 +18,8 @@ export interface Profile {
   active: boolean;
   must_change_password: boolean;
   phone?: string;
+  sms_opt_in?: boolean;
+  sms_opted_in_at?: string | null;
 }
 export interface School {
   id: string;
