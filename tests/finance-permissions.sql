@@ -308,6 +308,17 @@ select pg_temp.expect((select count(*)=1 from public.sms_outbox),
  'repeated notify is idempotent per payment/recipient');
 select pg_temp.expect((select count(*)=0 from public.sms_outbox where char_length(body)>160),
  'notification stays within one standard SMS segment');
+select pg_temp.expect(
+ (select count(*)=1 from public.sms_outbox o
+   join public.finance_payments p on p.id=o.payment_id
+   join public.students st on st.id=p.student_id
+   where o.body like '%'||st.first_name||' '||st.last_name||' via Cash.%'),
+ 'queued SMS includes the actual student name and payment method');
+select pg_temp.expect(
+ (select count(*)=1 from public.sms_outbox o
+   join public.finance_payments p on p.id=o.payment_id
+   where o.body like '%'||p.receipt_number||'%'),
+ 'queued SMS keeps payment receipt reference');
 
 -- Scope isolation is still enforced after enabling the provider mode.
 select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
@@ -315,5 +326,27 @@ select pg_temp.denied($q$select public.sms_request_payment(
  (select id from public.finance_payments where request_key=
  'a6000000-0000-4000-8000-000000000021')$q$,
  'cross-school SMS request remains blocked after activation');
+
+-- Message formatter regressions are pure SQL and spend no SMS credits.
+reset role;
+select pg_temp.expect(
+ private.sms_payment_body('Akosua Boateng',2000,'CASH','ER-20261027-653353BA13')
+   like '%Akosua Boateng via Cash. Receipt ER-20261027-653353BA13%',
+ 'student full name, Cash and full receipt shown');
+select pg_temp.expect(
+ private.sms_payment_body('Ama Owusu',95,'MOMO','ER-123')
+   like '%Ama Owusu via Mobile Money%',
+ 'Mobile Money mode shown in SMS');
+select pg_temp.expect(
+ private.sms_payment_body('Kwame Mensah',250,'BANK','ER-124')
+   like '%Kwame Mensah via Bank Transfer%',
+ 'Bank Transfer mode shown in SMS');
+select pg_temp.expect(
+ char_length(private.sms_payment_body(repeat('Adwoa ',30),9999,'BANK','ER-20261027-653353BA13'))<=160,
+ 'long student names stay inside the SMS length limit');
+select pg_temp.expect(
+ private.sms_payment_body('Àkósüa BoaÑeng',2000,'CASH','ER-123')
+   like '%Akosua BoaNeng%',
+ 'common accented names transliterate to single-segment SMS');
 
 rollback;
