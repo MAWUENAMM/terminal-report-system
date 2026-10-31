@@ -45,7 +45,7 @@ Deno.serve(async (request: Request) => {
   const token = authorization.replace(/^Bearer\s+/i, "").trim();
   if (!token || !url || !anon || !serviceRole) return reply(origin, 401, { error: "Not signed in" });
 
-  let body: { action?: string; payment_id?: string };
+  let body: { action?: string; payment_id?: string; extra_phone?: string; extra_consent?: boolean; extra_reason?: string };
   try {
     if (Number(request.headers.get("content-length") || 0) > 4096) throw new Error("Request too large");
     body = await request.json();
@@ -105,6 +105,14 @@ Deno.serve(async (request: Request) => {
     return reply(origin, 400, { error: "Invalid payment or action" });
   }
 
+  const customRequested = typeof body.extra_phone === "string" && body.extra_phone.trim() !== "";
+  if (customRequested && (body.extra_consent !== true ||
+      typeof body.extra_reason !== "string" || body.extra_reason.trim().length < 8 ||
+      body.extra_reason.trim().length > 120)) {
+    return reply(origin, 400, {
+      error: "Additional SMS recipient requires consent and an authorization reason (8-120 characters)."
+    });
+  }
   // Read configuration before queuing so missing secrets cannot produce
   // orphaned outbox rows that might later be sent unexpectedly.
   const { data: config, error: configError } = await admin.from("sms_central_settings")
@@ -118,6 +126,16 @@ Deno.serve(async (request: Request) => {
         mode: "CONFIG_PENDING", queued: 0,
         message: "SMS is paused. API key, pilot school/recipients and two activation gates are required.",
       });
+    }
+    // During the one-use staging pilot, the custom number must also be
+    // explicitly permitted; NEVER let a browser-supplied number bypass allowlists.
+    if (customRequested) {
+      const normalized = body.extra_phone!.replace(/[\s()-]/g, "")
+        .replace(/^0([25]\d{8})$/, "+233$1")
+        .replace(/^233([25]\d{8})$/, "+233$1");
+      if (!allowedPilotPhones.has(normalized)) {
+        return reply(origin, 403, { error: "The extra phone is not on the staging pilot allowlist" });
+      }
     }
     // This specifically authorizes ONE MESSAGE TOTAL, not one message per
     // calendar day. Any previously created outgoing message permanently closes
@@ -162,9 +180,16 @@ Deno.serve(async (request: Request) => {
   }
 
   // Privileged queuing happens in PostgreSQL, not from browser-provided phones.
-  const { data: queue, error: qError } = await userClient.rpc("sms_request_payment", {
-    p_payment_id: body.payment_id,
-  });
+  const { data: queue, error: qError } = customRequested
+    ? await userClient.rpc("sms_request_payment_extra", {
+        p_payment_id: body.payment_id,
+        p_extra_phone: body.extra_phone,
+        p_extra_consent: body.extra_consent,
+        p_extra_reason: body.extra_reason,
+      })
+    : await userClient.rpc("sms_request_payment", {
+        p_payment_id: body.payment_id,
+      });
   if (qError) return reply(origin, 403, { error: qError.message });
   if (queue?.mode !== "READY") return reply(origin, 200, queue);
 
@@ -207,11 +232,18 @@ Deno.serve(async (request: Request) => {
       const ambiguous = response.ok && value?.status === "success" && !accepted;
       const status = accepted ? "SUBMITTED" : ambiguous ? "UNKNOWN" : "FAILED";
       if (accepted) submitted++; else if (ambiguous) unknown++; else failed++;
-      const rawCredits = Number(providerItem?.credits_used ?? value?.credits_used ?? 0);
+      const reportedCredits = providerItem?.credits_used ?? value?.credits_used;
+      const verifiedCredits = reportedCredits !== undefined && reportedCredits !== null &&
+        (typeof reportedCredits === "number" ||
+          (typeof reportedCredits === "string" && /^\d+$/.test(reportedCredits))) &&
+        Number.isInteger(Number(reportedCredits)) && Number(reportedCredits) >= 0;
       await admin.from("sms_outbox").update({
         status,
         provider_message_id: accepted ? providerItem.id : null,
-        credits_used: accepted && Number.isFinite(rawCredits) ? Math.min(100, Math.max(0, rawCredits)) : 0,
+        // Missing provider usage is an estimate for one <=160-char ASCII SMS,
+        // not a claim of a provider-confirmed debit. Reconcile against balance.
+        credits_used: accepted ? (verifiedCredits ? Math.min(100, Number(reportedCredits)) : 1) : 0,
+        credits_verified: accepted && verifiedCredits,
         last_error: accepted ? null : ambiguous
           ? "Provider response accepted but message ID missing; verify in Arkesel before retry."
           : "Arkesel rejected the request. Check its dashboard.",
