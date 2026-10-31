@@ -106,6 +106,16 @@ Deno.serve(async (request: Request) => {
         message: "SMS is paused. API key, pilot school/recipients and two activation gates are required.",
       });
     }
+    // This specifically authorizes ONE MESSAGE TOTAL, not one message per
+    // calendar day. Any previously created outgoing message permanently closes
+    // this staging pilot until a new reviewed release and authorization.
+    const { count: previousPilotMessages, error: countError } = await admin.from("sms_outbox")
+      .select("id", { count: "exact", head: true });
+    if (countError || previousPilotMessages !== 0) {
+      return reply(origin, 409, {
+        error: "The one-message SMS pilot has already been used or cannot be verified. No additional SMS will be queued.",
+      });
+    }
     // This is a temporary, explicit pilot ONLY. Authenticated staff must still
     // pass the existing school/finance authorization inside sms_request_payment.
     const { data: payment, error: paymentError } = await admin.from("finance_payments")
