@@ -349,4 +349,63 @@ select pg_temp.expect(
    like '%Akosua BoaNeng%',
  'common accented names transliterate to single-segment SMS');
 
+-- One optional extra number per payment; school Administrator consent and
+-- authorization are enforced in the database, even with RLS bypassed by RPC.
+reset role;
+update public.sms_central_settings
+  set global_daily_limit=20,school_daily_limit=5,sending_enabled=true where singleton=true;
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select pg_temp.expect(
+  (public.sms_request_payment_extra(
+    (select id from public.finance_payments
+      where request_key='a6000000-0000-4000-8000-000000000021'),
+    '0249998888',true,'Guardian authorized payment updates')->>'custom_queued')='true',
+  'admin may queue one consented custom recipient for own-school payment');
+select pg_temp.expect((select count(*)=1 from public.sms_outbox
+  where recipient_kind='CUSTOM' and recipient_staff_id is null
+    and phone_e164='+233249998888' and consent_confirmed_at is not null
+    and recipient_reason='Guardian authorized payment updates'),
+  'custom SMS stores phone, explicit consent time and audit reason');
+select pg_temp.expect((select count(*)=2 from public.sms_outbox),
+  'normal opted-in staff and one custom recipient queued');
+select pg_temp.expect((select count(*)=0 from public.sms_outbox where char_length(body)>160),
+  'custom SMS also stays within a 160-character segment');
+select pg_temp.expect(
+  (public.sms_request_payment_extra(
+    (select id from public.finance_payments
+      where request_key='a6000000-0000-4000-8000-000000000021'),
+    '0249998888',true,'Guardian authorized payment updates')->>'custom_queued')='false',
+  'repeat request does not create duplicate custom SMS');
+select pg_temp.expect((select count(*)=2 from public.sms_outbox),
+  'repeat custom notification remains idempotent');
+
+select pg_temp.denied($q$select public.sms_request_payment_extra(
+  (select id from public.finance_payments
+    where request_key='a6000000-0000-4000-8000-000000000021'),
+  '0248765432',false,'Guardian authorized payment updates')$q$,
+  'custom SMS cannot be queued without consent attestation');
+select pg_temp.denied($q$select public.sms_request_payment_extra(
+  (select id from public.finance_payments
+    where request_key='a6000000-0000-4000-8000-000000000021'),
+  '0247654321',true,'Guardian authorized payment updates')$q$,
+  'admin cannot bypass staff opt-in using the custom field');
+
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.sms_request_payment_extra(
+  (select id from public.finance_payments
+    where request_key='a6000000-0000-4000-8000-000000000021'),
+  '0248765432',true,'Guardian authorized payment updates')$q$,
+  'accountant cannot add arbitrary custom recipient');
+
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select pg_temp.denied($q$select public.sms_request_payment_extra(
+  (select id from public.finance_payments
+    where request_key='a6000000-0000-4000-8000-000000000021'),
+  '0248765432',true,'Guardian authorized payment updates')$q$,
+  'cross-school accountant cannot add custom recipient');
+
+select pg_temp.expect((select count(*)=1 from public.sms_outbox where credits_verified=false),
+  'credit verification flag distinguishes provider-confirmed from estimated usage');
+
 rollback;
