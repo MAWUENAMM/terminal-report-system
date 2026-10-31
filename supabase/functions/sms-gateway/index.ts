@@ -135,9 +135,14 @@ Deno.serve(async (request: Request) => {
   // Read configuration before queuing so missing secrets cannot produce
   // orphaned outbox rows that might later be sent unexpectedly.
   const { data: config, error: configError } = await admin.from("sms_central_settings")
-    .select("sending_enabled,sender_id").eq("singleton", true).single();
+    .select("sending_enabled,sender_id,global_daily_limit,school_daily_limit").eq("singleton", true).single();
   if (configError || !config) return reply(origin, 503, { error: "SMS configuration unavailable" });
   if (config.sender_id !== "EDUREPORT") return reply(origin, 409, { error: "Expected EDUREPORT sender configuration" });
+  // Until the owner confirms receipt, a 1/1 quota is a TOTAL one-send
+  // launch, not just a new allowance after midnight. Lift the quotas
+  // explicitly after verification to enter normal multi-send operation.
+  const firstProductionSend = controlledLive &&
+    config.global_daily_limit === 1 && config.school_daily_limit === 1;
 
   let permittedSchool = "";
   if (config.sending_enabled) {
@@ -164,6 +169,16 @@ Deno.serve(async (request: Request) => {
       return reply(origin, 403, { error: "SMS is unavailable for inactive or deleted schools" });
     }
 
+    if (firstProductionSend) {
+      if (customRequested) return reply(origin, 409, {
+        error: "The initial live test allows only one opted-in staff handset. Leave the additional recipient blank.",
+      });
+      const { count: recorded, error: recordError } = await admin.from("sms_outbox")
+        .select("id", { count: "exact", head: true });
+      if (recordError || recorded !== 0) return reply(origin, 409, {
+        error: "The first paid production SMS test has already been attempted. No second send will be queued.",
+      });
+    }
     if (!controlledLive) {
       // The first pilot used exactly ONE SMS. It is permanently consumed,
       // irrespective of daily limit resets and additional credits purchased.
@@ -195,6 +210,9 @@ Deno.serve(async (request: Request) => {
         error: "Two opted-in finance staff share the same phone number. Correct duplicates before any SMS can be queued.",
       });
     }
+    if (firstProductionSend && staffPhones.length !== 1) return reply(origin, 409, {
+      error: "For the initial live test, exactly one finance staff member must opt in to SMS.",
+    });
     if (!controlledLive) {
       if (staffPhones.length !== 1 || staffPhones.some((phone) => !allowedPilotPhones.has(phone))) {
         return reply(origin, 409, {
@@ -287,14 +305,15 @@ Deno.serve(async (request: Request) => {
       }).eq("id", item.id).eq("status", "PROCESSING");
     }
   }
-  if (controlledLive) {
+  if (controlledLive && !firstProductionSend) {
     return reply(origin, 200, {
       mode: "LIVE", queued: ids.length, submitted, failed, unknown,
       message: "SUBMITTED means Arkesel accepted the request, not that the handset received it. No automatic retries are attempted.",
     });
   }
-  // Automatically pause the database switch after this ONE authorized pilot
-  // attempt, regardless of provider acceptance. The lifetime outbox check also
+  // Automatically pause after the one-use staging pilot OR the first
+  // one-message production launch, irrespective of provider acceptance.
+  // The lifetime outbox check also
   // keeps it closed if this update fails or a worker exits unexpectedly.
   const { error: pauseError } = await admin.from("sms_central_settings")
     .update({ sending_enabled: false, updated_at: new Date().toISOString() })
@@ -303,7 +322,7 @@ Deno.serve(async (request: Request) => {
     mode: "LIVE", queued: ids.length, submitted, failed, unknown,
     pilot_paused: !pauseError,
     message: pauseError
-      ? "Pilot request completed but automatic pause needs administrator attention; one-use guard remains in force."
-      : "The one-use SMS pilot is now paused. SUBMITTED means accepted by Arkesel, not handset delivery."
+      ? "Single-message SMS test attempted. Automatic pause needs operator attention; one-send lifetime guard remains."
+      : "Single-message SMS test completed and sending paused. SUBMITTED means provider accepted, not handset delivery."
   });
 });
