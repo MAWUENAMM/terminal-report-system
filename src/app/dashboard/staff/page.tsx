@@ -60,6 +60,7 @@ export default function Staff() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th>Phone</th>
               <th>Role</th>
               <th>Status</th>
               <th>Actions</th>
@@ -70,6 +71,7 @@ export default function Staff() {
               <tr key={s.id}>
                 <td className="font-medium">{s.full_name}</td>
                 <td>{s.email}</td>
+                <td>{s.phone || "Not added"}</td>
                 <td>{roleNames[s.role]}</td>
                 <td>
                   {!s.active
@@ -137,6 +139,7 @@ export default function Staff() {
                     email: draft.email,
                     role: draft.role,
                     active: draft.active,
+                    phone: draft.phone || "",
                   });
                   if (result.temporaryPassword) setCredentials(result);
                 },
@@ -167,6 +170,15 @@ export default function Staff() {
                 onChange={(e) => setDraft({ ...draft, email: e.target.value })}
               />
             </Field>
+            <Field label="Ghana mobile number (optional)">
+              <input className="field" type="tel" autoComplete="off"
+                maxLength={35} placeholder="0241234567"
+                value={draft.phone || ""} onChange={e=>setDraft({...draft,phone:e.target.value})}/>
+            </Field>
+            <p className="text-xs leading-5 text-muted">
+              Adding a phone number does not automatically subscribe this staff member.
+              Administrators and Accountants opt in under My Profile before payment SMS can reach them.
+            </p>
             <Field label="Primary role">
               <select
                 className="field"

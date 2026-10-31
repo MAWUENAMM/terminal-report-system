@@ -57,6 +57,10 @@ export default function SchoolFinance() {
   const [latestSaleId,setLatestSaleId]=useState<string|null>(null);
   const [saleDocumentBusy,setSaleDocumentBusy]=useState<string|null>(null);
   const [events,setEvents]=useState<Event[]>([]);
+  const [smsFeedback,setSmsFeedback]=useState("");
+  const [extraSmsDetails,setExtraSmsDetails]=useState<Record<string,{
+    phone:string;reason:string;consent:boolean;
+  }>>({});
   const [images,setImages]=useState<Record<string,string>>({});
   const [search,setSearch]=useState("");
   const [selectedStudent,setSelectedStudent]=useState("");
@@ -245,7 +249,44 @@ export default function SchoolFinance() {
     await perform(async()=>{await invoke("finance_void_payment",{p_payment_id:payment.id,p_reason:reason});},"Payment reversed and recorded in audit history.");
   }
   async function notify(payment:FinancePayment){
-    await perform(async()=>{await invoke("finance_notify_payment",{p_payment_id:payment.id});},"Payment notification sent to finance administrators.");
+    const extra=extraSmsDetails[payment.id];
+    const custom=Boolean(extra?.phone.trim());
+    if(custom&&extra){
+      if(w.profile.role!=="ADMIN")return setError("Only the School Administrator may add an SMS recipient.");
+      if(!/^((0[25]\d{8})|(233[25]\d{8})|(\+233[25]\d{8}))$/.test(extra.phone.replace(/[\s()-]/g,"")))
+        return setError("Enter a valid Ghanaian mobile number for the additional recipient.");
+      if(!extra.consent||extra.reason.trim().length<8)
+        return setError("Confirm consent and explain why the recipient may view the learner's payment details.");
+    }
+    setSmsFeedback("");
+    let message="An in-app payment alert was recorded.";
+    const success=await run(async()=>{
+      await invoke("finance_notify_payment",{p_payment_id:payment.id});
+      const {data,error:gatewayError}=await browserClient().functions.invoke("sms-gateway",{
+        body:{action:"notify",payment_id:payment.id,...(custom&&extra?{
+          extra_phone:extra.phone.trim(),extra_consent:extra.consent,extra_reason:extra.reason.trim()
+        }:{})}
+      });
+      if(gatewayError){
+        message="The in-app alert was recorded, but SMS could not be checked. No delivery is confirmed.";
+        return;
+      }
+      if(data?.mode==="PREVIEW"){
+        message="In-app alert recorded. Real SMS is not enabled yet. "+
+          (data.eligible||0)+" staff members are opted in to receive SMS when the service is activated."+
+          (custom?" No additional SMS was sent.":"");
+      }else if(data?.mode==="LIVE"){
+        message="In-app alert recorded. Arkesel accepted "+
+          (data.submitted||0)+" SMS request(s). Delivery to phones is not yet confirmed.";
+      }else if(data?.mode==="CONFIG_PENDING"){
+        message="In-app alert recorded. SMS sending is waiting for secure provider activation.";
+      }else if(data?.mode==="READY"){
+        message="In-app alert recorded. No new SMS requests; duplicate alerts were prevented.";
+      }else{
+        message="In-app alert recorded. SMS delivery status is unavailable.";
+      }
+    },"Payment notification processed.");
+    if(success){setSmsFeedback(message);await load();}
   }
   async function saveItem(event:FormEvent){
     event.preventDefault();
@@ -429,6 +470,10 @@ export default function SchoolFinance() {
         </button>
       </PageHeader>
 
+      {smsFeedback&&<div role="status" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <BellRing size={18} className="mt-0.5 shrink-0"/><div className="flex-1">{smsFeedback}</div>
+        <button type="button" className="text-amber-800" onClick={()=>setSmsFeedback("")} aria-label="Dismiss SMS status">✕</button>
+      </div>}
       {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
       {loading&&<p role="status" className="text-sm text-muted">Refreshing finance records…</p>}
 
@@ -627,11 +672,46 @@ export default function SchoolFinance() {
               <div className="flex flex-wrap gap-2">
                 <button className="btn-secondary !py-2" onClick={()=>void receipt(p)}><ArrowDownToLine size={15}/>Receipt</button>
                 {!p.voided_at&&<>
-                  <button className="btn-secondary !py-2" disabled={busy} onClick={()=>void notify(p)}><BellRing size={15}/>Notify</button>
+                  <button className="btn-secondary !py-2" disabled={busy} onClick={()=>void notify(p)}><BellRing size={15}/>Notify in-app + SMS</button>
                   <button className="btn-secondary !py-2 !text-red-700" disabled={busy} onClick={()=>void reverse(p)}>Reverse</button>
                 </>}
               </div>
             </div>
+            {!p.voided_at&&w.profile.role==="ADMIN"&&
+              <details className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-emerald-800">
+                  Optional: additional authorized SMS recipient
+                </summary>
+                <div className="mt-3 grid gap-3">
+                  <Field label="Additional phone number">
+                    <input type="tel" inputMode="tel" autoComplete="off" className="field"
+                      maxLength={20} placeholder="0241234567 or +233241234567"
+                      value={extraSmsDetails[p.id]?.phone||""}
+                      onChange={e=>setExtraSmsDetails(prev=>({
+                        ...prev,[p.id]:{phone:e.target.value,reason:prev[p.id]?.reason||"",
+                          consent:prev[p.id]?.consent||false}
+                      }))}/>
+                  </Field>
+                  <Field label="Recipient's role or authorization reason">
+                    <input className="field" maxLength={120} placeholder="Parent, guardian, or school proprietor"
+                      value={extraSmsDetails[p.id]?.reason||""}
+                      onChange={e=>setExtraSmsDetails(prev=>({
+                        ...prev,[p.id]:{phone:prev[p.id]?.phone||"",reason:e.target.value,
+                          consent:prev[p.id]?.consent||false}
+                      }))}/>
+                  </Field>
+                  <label className="flex items-start gap-2 text-xs text-slate-700">
+                    <input type="checkbox" className="mt-0.5 accent-emerald-700"
+                      checked={extraSmsDetails[p.id]?.consent||false}
+                      onChange={e=>setExtraSmsDetails(prev=>({
+                        ...prev,[p.id]:{phone:prev[p.id]?.phone||"",
+                          reason:prev[p.id]?.reason||"",consent:e.target.checked}
+                      }))}/>
+                    <span>I confirm that this person has consented to receive this student&apos;s payment details by SMS and is authorized to view them.</span>
+                  </label>
+                  <p className="text-xs text-muted">Click Notify above to alert opted-in finance staff and this optional recipient. One extra number per payment; each SMS may consume a credit.</p>
+                </div>
+              </details>}
           </div>)}
           {!selectedPayments.length&&<Empty>No payments recorded for the selected learner.</Empty>}</div>
         </section>

@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   Wallet,
+  MessageSquareText,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -335,6 +336,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       show: admin || w.profile.role === "ACCOUNTANT",
     },
     {
+      path: "/dashboard/sms",
+      label: "Central SMS",
+      icon: MessageSquareText,
+      show: w.operator,
+    },
+    {
       path: "/dashboard/requests",
       label: "School requests",
       icon: Inbox,
@@ -353,6 +360,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       (schoolActive ||
         [
           "/dashboard/schools",
+          "/dashboard/sms",
           "/dashboard/requests",
           "/dashboard/profile",
         ].includes(item.path)),
