@@ -58,6 +58,9 @@ export default function CentralSMS() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [testHistory,setTestHistory]=useState<{
+    submitted:number;recent:{date:string;status:string;phone_last4:string;credits_used:number}[];
+  }>({submitted:0,recent:[]});
   const [testPhone,setTestPhone]=useState("");
   const [testConfirm,setTestConfirm]=useState(false);
   const [testBusy,setTestBusy]=useState(false);
@@ -75,6 +78,7 @@ export default function CentralSMS() {
         body: { action: "balance" },
       });
       setReadiness(!gatewayError ? (gateway?.readiness ?? null) : null);
+      if (!gatewayError && gateway?.test_info) setTestHistory(gateway.test_info);
       if (!gatewayError && gateway?.connected) {
         setGatewayConnected(true);
         setCredits(readableCredits(gateway.balance));
@@ -219,6 +223,18 @@ export default function CentralSMS() {
           </button>
         </div>
         {!testPhoneValid&&testPhone.trim()&&<p className="mt-2 text-xs text-rose-700">Enter a valid Ghana mobile number.</p>}
+        <p className="mt-3 text-sm text-muted">Test SMS requests accepted: <strong className="text-slate-900">{testHistory.submitted}</strong></p>
+        {testHistory.recent.length>0&&<div className="mt-3 overflow-x-auto">
+          <table className="data-table">
+            <thead><tr><th>Test date</th><th>Phone ending</th><th>Provider status</th><th>Estimated credits</th></tr></thead>
+            <tbody>{testHistory.recent.map((test,i)=><tr key={test.date+"-"+i}>
+              <td>{new Date(test.date).toLocaleString("en-GB")}</td>
+              <td>•••• {test.phone_last4}</td>
+              <td className="font-medium">{test.status}</td>
+              <td>{test.credits_used}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
         {testResult&&<div role={testResult.kind==="error"?"alert":"status"}
           className={"mt-4 flex items-start gap-3 rounded-xl border p-4 "+(
             testResult.kind==="success"?"border-emerald-200 bg-emerald-50 text-emerald-950":
