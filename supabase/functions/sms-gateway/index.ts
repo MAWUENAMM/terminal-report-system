@@ -96,6 +96,18 @@ Deno.serve(async (request: Request) => {
         staff.length === 1 && allowedPilotPhones.size === 1 &&
         allowedPilotPhones.has(staff[0].phone);
     }
+    const { data: testHistory } = await admin.from("sms_test_outbox")
+      .select("created_at,status,phone_e164,credits_used").order("created_at",{ascending:false}).limit(8);
+    const { count: testSubmitted } = await admin.from("sms_test_outbox")
+      .select("id",{head:true,count:"exact"}).eq("status","SUBMITTED");
+    const testInfo = {
+      submitted: testSubmitted ?? 0,
+      recent: (testHistory || []).map((item) => ({
+        date: item.created_at, status: item.status,
+        phone_last4: String(item.phone_e164 || "").slice(-4),
+        credits_used: item.credits_used,
+      })),
+    };
     const readiness = {
       api_key_configured: Boolean(providerKey),
       edge_live_enabled: edgeLiveEnabled,
@@ -106,17 +118,17 @@ Deno.serve(async (request: Request) => {
       // A balance check NEVER proves sender ID/carrier approval or delivery.
       sender_approval_verified: false,
     };
-    if (!providerKey) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness });
+    if (!providerKey) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
     try {
       const response = await fetch("https://sms.arkesel.com/api/v2/clients/balance-details", {
         method: "GET", headers: { "api-key": providerKey },
         signal: AbortSignal.timeout(10000),
       });
-      if (!response.ok) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness });
+      if (!response.ok) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
       const value = await response.json();
-      return reply(origin, 200, { dashboard: data, balance: value, connected: true, readiness });
+      return reply(origin, 200, { dashboard: data, balance: value, connected: true, readiness, test_info: testInfo });
     } catch {
-      return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness });
+      return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
     }
   }
 
