@@ -30,6 +30,14 @@ function email(x: unknown) {
     throw new Error("Enter a valid email address.");
   return e;
 }
+function normalizedPhone(input: unknown) {
+  const raw = typeof input === "string" ? input.trim().replace(/[\s()-]/g, "") : "";
+  if (!raw) return null;
+  if (/^0[25]\d{8}$/.test(raw)) return "+233" + raw.slice(1);
+  if (/^233[25]\d{8}$/.test(raw)) return "+" + raw;
+  if (/^\+233[25]\d{8}$/.test(raw)) return raw;
+  throw new Error("Enter a valid Ghana mobile number, e.g. 0241234567.");
+}
 function password() {
   return "Edu!" + crypto.randomUUID().replaceAll("-", "").slice(0, 20);
 }
@@ -359,6 +367,7 @@ Deno.serve(async (request) => {
         full_name: name,
         email: address,
         role,
+        phone: normalizedPhone(body.phone),
         must_change_password: true,
       });
       if (error) {
@@ -385,7 +394,8 @@ Deno.serve(async (request) => {
         throw new Error("Another administrator must change your own access.");
       const { error } = await service
         .from("school_users")
-        .update({ full_name: value(body.full_name), role, active: body.active })
+        .update({ full_name: value(body.full_name), role, active: body.active,
+          phone: normalizedPhone(body.phone ?? target.phone) })
         .eq("id", target.id)
         .eq("school_id", profile.school_id);
       check(error);
