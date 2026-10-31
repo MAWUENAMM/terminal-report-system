@@ -1,0 +1,43 @@
+name: Finance feature checks
+
+on:
+  push:
+    branches:
+      - feature/accountant-finance-foundation
+  pull_request:
+    paths:
+      - 'src/app/dashboard/finance/**'
+      - 'src/app/finance-demo/**'
+      - 'src/components/finance-demo.tsx'
+      - 'src/app/dashboard/staff/page.tsx'
+      - 'src/lib/finance-receipt.ts'
+      - 'src/lib/finance-sale-receipt.ts'
+      - 'tests/finance-*'
+      - 'supabase/migrations/*accountant*'
+      - 'supabase/functions/school-admin/**'
+      - '.github/workflows/finance-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Finance unit tests and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run existing and finance unit tests
+        run: npm test
+      - name: Lint new finance source
+        run: npx eslint src/app/dashboard/finance/page.tsx src/app/finance-demo/page.tsx src/components/finance-demo.tsx src/app/dashboard/staff/page.tsx src/lib/finance-receipt.ts src/lib/finance-sale-receipt.ts
+      # The existing application has unrelated global React lint debt, tracked separately.
+      # Keeping feature gates scoped avoids hiding or falsely attributing baseline errors.

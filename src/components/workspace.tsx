@@ -180,6 +180,14 @@ export function WorkspaceProvider({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!notice && !error) return;
+    const timeout = window.setTimeout(() => {
+      setNotice("");
+      setError("");
+    }, error ? 9000 : 4500);
+    return () => window.clearTimeout(timeout);
+  }, [notice, error]);
   if (!data)
     return (
       <div className="mx-auto max-w-xl p-10">

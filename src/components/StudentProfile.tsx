@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Award,
@@ -12,6 +13,7 @@ import {
   HeartPulse,
   ImagePlus,
   MessageSquareText,
+  Wallet,
   PencilLine,
   ShieldCheck,
   Trash2,
@@ -270,6 +272,12 @@ export default function StudentProfile({ student, onClose }: Props) {
                   <button className="btn-secondary !py-2.5" onClick={startEditing}>
                     <PencilLine className="h-4 w-4" /> Edit records
                   </button>
+                )}
+                {w.profile.role === "ADMIN" && (
+                  <Link href={"/dashboard/finance?student=" + currentStudent.id}
+                    className="btn-secondary !py-2.5">
+                    <Wallet className="h-4 w-4" /> Financial records
+                  </Link>
                 )}
                 <button
                   className="btn-primary !py-2.5"

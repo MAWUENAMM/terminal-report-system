@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Bell,
   BookOpen,
   Building2,
   CalendarDays,
+  Wallet,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -41,6 +42,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<DashboardTheme>("light");
   const [navQuery, setNavQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const [pendingRequests, setPendingRequests] = useState<
     Array<{
       id: string;
@@ -49,6 +51,46 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       created_at: string;
     }>
   >([]);
+  const [financeEvents,setFinanceEvents] = useState<Array<{
+    id:string;kind:string;message:string;actor_name:string;created_at:string;
+  }>>([]);
+  const [financeReadIds,setFinanceReadIds] = useState<string[]>([]);
+  const [dismissedAlertKeys,setDismissedAlertKeys] = useState<string[]>([]);
+  const alertStorageKey = "edureport:read-advisories:" + w.school.id + ":" + w.profile.id;
+
+  useEffect(() => {
+    let saved:string[]=[];
+    try {
+      const value=JSON.parse(window.localStorage.getItem(alertStorageKey)||"[]");
+      if(Array.isArray(value))saved=value.filter((entry):entry is string=>typeof entry==="string");
+    }catch{ /* If storage is blocked, the dismissal is session-only. */ }
+    void Promise.resolve().then(()=>setDismissedAlertKeys(saved));
+  },[alertStorageKey]);
+
+  function dismissAlerts(keys:string[]){
+    const updated=Array.from(new Set([...dismissedAlertKeys,...keys])).slice(-150);
+    setDismissedAlertKeys(updated);
+    try{window.localStorage.setItem(alertStorageKey,JSON.stringify(updated));}catch{ /* session-only */ }
+  }
+  function dismissAlert(key:string){ dismissAlerts([key]); }
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const outside = (event: PointerEvent) => {
+      if(event.target instanceof Node && !notificationsRef.current?.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+    const escape = (event: KeyboardEvent) => {
+      if(event.key==="Escape") setNotificationsOpen(false);
+    };
+    document.addEventListener("pointerdown",outside);
+    document.addEventListener("keydown",escape);
+    return () => {
+      document.removeEventListener("pointerdown",outside);
+      document.removeEventListener("keydown",escape);
+    };
+  }, [notificationsOpen]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("edureport:dashboard-theme");
@@ -97,6 +139,45 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
     };
   }, [w.operator]);
+
+  useEffect(() => {
+    if (w.profile.role !== "ADMIN" && w.profile.role !== "ACCOUNTANT") {
+      void Promise.resolve().then(() => {
+        setFinanceEvents([]);
+        setFinanceReadIds([]);
+      });
+      return;
+    }
+    let active=true;
+    const refresh=async()=>{
+      const db=browserClient();
+      const {data:events,error}=await db.from("finance_events")
+        .select("id,kind,message,actor_name,created_at")
+        .eq("school_id",w.school.id).order("created_at",{ascending:false}).limit(12);
+      if(error || !active)return;
+      const ids=(events||[]).map(e=>e.id);
+      const reads=ids.length?await db.from("finance_event_reads")
+        .select("event_id").eq("user_id",w.profile.id).in("event_id",ids):{data:[]};
+      if(active){
+        setFinanceEvents(events||[]);
+        setFinanceReadIds((reads.data||[]).map(r=>r.event_id));
+      }
+    };
+    void refresh();
+    const id=window.setInterval(()=>{if(!document.hidden)void refresh();},60000);
+    window.addEventListener("focus",refresh);
+    return()=>{active=false;window.clearInterval(id);window.removeEventListener("focus",refresh);};
+  },[w.profile.role,w.profile.id,w.school.id]);
+
+  async function readFinanceNotifications(ids:string[]){
+    const unread=ids.filter(id=>!financeReadIds.includes(id));
+    if(!unread.length)return;
+    const {error}=await browserClient().from("finance_event_reads").upsert(
+      unread.map(id=>({event_id:id,user_id:w.profile.id})),
+      {onConflict:"event_id,user_id",ignoreDuplicates:true}
+    );
+    if(!error)setFinanceReadIds(existing=>Array.from(new Set([...existing,...unread])));
+  }
 
   const schoolActive = w.school.active && !w.school.deleted_at;
   const platformPage = [
@@ -159,11 +240,28 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     (!w.classes.length ||
       !w.students.some((student) => student.status === "ACTIVE"));
 
+  const unreadFinanceEvents=financeEvents.filter(e=>!financeReadIds.includes(e.id));
+  const unreadFinanceCount=unreadFinanceEvents.length;
+  const reportAlertKey="reports:"+w.school.academic_year+":"+w.school.current_term+":"+reportAttention;
+  const termAlertKey="term-closed:"+w.school.academic_year+":"+w.school.current_term;
+  const setupAlertKey="setup:"+w.school.id;
+  const showReportAlert=reportAttention>0&&!dismissedAlertKeys.includes(reportAlertKey);
+  const showTermAlert=currentTerm?.status==="CLOSED"&&!dismissedAlertKeys.includes(termAlertKey);
+  const showSetupAlert=setupAttention&&!dismissedAlertKeys.includes(setupAlertKey);
+  const actionableCount=unreadFinanceCount+(showReportAlert?1:0)+(showTermAlert?1:0)+(showSetupAlert?1:0);
+  async function markAllNotificationsRead(){
+    await readFinanceNotifications(unreadFinanceEvents.map(e=>e.id));
+    dismissAlerts([
+      ...(showReportAlert?[reportAlertKey]:[]),
+      ...(showTermAlert?[termAlertKey]:[]),
+      ...(showSetupAlert?[setupAlertKey]:[])
+    ]);
+  }
   const notificationCount =
-    pendingRequests.length +
-    (reportAttention > 0 ? 1 : 0) +
-    (currentTerm?.status === "CLOSED" ? 1 : 0) +
-    (setupAttention ? 1 : 0);
+    unreadFinanceCount + pendingRequests.length +
+    (showReportAlert ? 1 : 0) +
+    (showTermAlert ? 1 : 0) +
+    (showSetupAlert ? 1 : 0);
 
   const nav = [
     {
@@ -176,19 +274,19 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       path: "/dashboard",
       label: "Overview",
       icon: LayoutDashboard,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/students",
       label: "Learners",
       icon: Users,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/classes",
       label: "Classes",
       icon: School,
-      show: true,
+      show: w.profile.role !== "ACCOUNTANT",
     },
     {
       path: "/dashboard/subjects",
@@ -228,6 +326,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       label: "School settings",
       icon: Settings,
       show: admin,
+    },
+    {
+      path: "/dashboard/finance",
+      label: "School finance",
+      icon: Wallet,
+      badge: unreadFinanceCount,
+      show: admin || w.profile.role === "ACCOUNTANT",
     },
     {
       path: "/dashboard/requests",
@@ -506,6 +611,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {process.env.NEXT_PUBLIC_EDUREPORT_TESTING === "true" && (
+              <span className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-[10px] font-bold text-amber-900">
+                TEST ONLY
+              </span>
+            )}
             <button
               className="dashboard-icon-button rounded-xl border border-transparent p-2.5 text-muted transition hover:border-slate-200 hover:bg-slate-50"
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -517,7 +627,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
 
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 className={
                   "dashboard-icon-button relative rounded-xl border p-2.5 transition " +
@@ -533,7 +643,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                     : "")
                 }
                 aria-expanded={notificationsOpen}
-                onClick={() => setNotificationsOpen((open) => !open)}
+                onClick={() => {
+                  setNotificationsOpen(open=>!open);
+                }}
               >
                 <Bell size={18} />
                 {notificationCount > 0 && (
@@ -554,9 +666,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                         Items that may need your attention
                       </p>
                     </div>
-                    {notificationCount === 0 && (
-                      <CheckCircle2 size={18} className="text-emerald-600" />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {actionableCount>0&&<button type="button"
+                        className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"
+                        onClick={()=>void markAllNotificationsRead()}>
+                        Mark all as read
+                      </button>}
+                      {notificationCount===0&&<CheckCircle2 size={18} className="text-emerald-600"/>}
+                    </div>
                   </div>
 
                   <div className="max-h-[calc(100dvh-190px)] overflow-y-auto p-2 sm:max-h-[430px]">
@@ -593,10 +710,29 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                         </Link>
                       ))}
 
-                    {reportAttention > 0 && (
+                    {unreadFinanceEvents.map(event=>(
+                      <Link
+                        key={event.id}
+                        href="/dashboard/finance"
+                        onClick={()=>{void readFinanceNotifications([event.id]);setNotificationsOpen(false);}}
+                        className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
+                      >
+                        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                          <Wallet size={16}/>
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800">{event.message}</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {event.actor_name} · {new Date(event.created_at).toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"})}
+                          </span>
+                        </span>
+                      </Link>
+                    ))}
+
+                    {showReportAlert && (
                       <Link
                         href="/dashboard/reports"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(reportAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-red-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700">
@@ -615,10 +751,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       </Link>
                     )}
 
-                    {currentTerm?.status === "CLOSED" && (
+                    {showTermAlert && (
                       <Link
                         href="/dashboard/terms"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(termAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-sky-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-700">
@@ -635,10 +771,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       </Link>
                     )}
 
-                    {setupAttention && (
+                    {showSetupAlert && (
                       <Link
                         href="/dashboard/classes"
-                        onClick={() => setNotificationsOpen(false)}
+                        onClick={() => {dismissAlert(setupAlertKey);setNotificationsOpen(false);}}
                         className="flex gap-3 rounded-xl p-3 transition hover:bg-emerald-50"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
