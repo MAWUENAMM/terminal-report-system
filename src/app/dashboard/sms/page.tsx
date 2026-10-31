@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, BellRing, Building2, CircleAlert, CreditCard, KeyRound, RefreshCcw, Send, ShieldCheck, Wallet } from "lucide-react";
+import { Activity, BellRing, Building2, CircleAlert, CircleCheck, CreditCard, KeyRound, RefreshCcw, Send, ShieldCheck, Wallet } from "lucide-react";
 import { useWorkspace } from "@/components/workspace";
-import { Empty, PageHeader, Restricted } from "@/components/ui";
+import { Empty, Modal, PageHeader, Restricted } from "@/components/ui";
 import { browserClient } from "@/lib/supabase/client";
 
 type Usage = {
@@ -58,6 +58,10 @@ export default function CentralSMS() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [testPhone,setTestPhone]=useState("");
+  const [testConfirm,setTestConfirm]=useState(false);
+  const [testBusy,setTestBusy]=useState(false);
+  const [testResult,setTestResult]=useState<{kind:"success"|"error"|"info";title:string;message:string}|null>(null);
   const load = useCallback(async () => {
     if (!workspace.operator) return;
     setLoading(true); setError("");
@@ -87,6 +91,43 @@ export default function CentralSMS() {
   useEffect(() => {
     void Promise.resolve().then(load);
   }, [load]);
+  const normalizedPhone=testPhone.replace(/[\s()-]/g,"");
+  const testPhoneValid=/^((0[25]\d{8})|(233[25]\d{8})|(\+233[25]\d{8}))$/.test(normalizedPhone);
+  async function sendTestSms(){
+    setTestConfirm(false);
+    if(testBusy || !testPhoneValid)return;
+    setTestBusy(true);setTestResult({kind:"info",title:"Submitting SMS test",message:"Contacting Arkesel. Do not repeat until this request completes."});
+    try{
+      const {data,error:sendError}=await browserClient().functions.invoke("sms-gateway",{
+        body:{action:"test_send",test_phone:normalizedPhone,
+          test_confirmed:true,test_request_id:crypto.randomUUID()}
+      });
+      if(sendError){
+        let description="The gateway did not confirm this test. Check Arkesel before repeating.";
+        const context=(sendError as {context?:unknown}).context;
+        if(context instanceof Response){
+          try{
+            const response=await context.clone().json() as {error?:unknown};
+            if(typeof response.error==="string") description=response.error;
+          }catch{/* Preserve a cautious status if no JSON body exists. */}
+        }
+        setTestResult({kind:"error",title:"SMS test not confirmed",message:description});
+      }else if(data?.mode==="TEST_SUBMITTED"){
+        setTestResult({kind:"success",title:"Test SMS accepted by Arkesel",
+          message:"The provider accepted this request. Check the phone for delivery, which may take a few minutes."});
+      }else if(data?.mode==="DUPLICATE"){
+        setTestResult({kind:"info",title:"Duplicate test prevented",message:String(data.message||"This request was already recorded.")});
+      }else{
+        setTestResult({kind:data?.mode==="TEST_FAILED"?"error":"info",
+          title:data?.mode==="TEST_FAILED"?"Arkesel rejected the SMS":"Delivery status uncertain",
+          message:String(data?.error||data?.message||"Check Arkesel before attempting another test.")});
+      }
+      await load();
+    }catch{
+      setTestResult({kind:"error",title:"SMS test status unknown",
+        message:"The request may have reached Arkesel. Check your handset and the Arkesel dashboard before repeating."});
+    }finally{setTestBusy(false);}
+  }
   if (!workspace.operator) return <Restricted/>;
 
   const total = info?.totals;
@@ -159,6 +200,51 @@ export default function CentralSMS() {
           These checks cannot confirm sender-ID whitelisting or handset delivery. Sending requires verified recipient consent, a staged test, and explicit production authorization.
         </p>
       </section>
+      <section className="surface rounded-2xl p-5 sm:p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold"><Send size={21} className="text-emerald-700"/>Send a test SMS</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+          Test the EDUREPORT sender as often as your provider balance allows, without creating a school payment.
+          Every confirmed test can use one SMS credit. Only a Platform Administrator can send these tests.
+        </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="w-full max-w-sm">
+            <span className="mb-1.5 block text-sm font-medium">Recipient phone number</span>
+            <input className="field" type="tel" inputMode="tel" autoComplete="off" maxLength={20}
+              placeholder="0241234567 or +233241234567"
+              value={testPhone} onChange={e=>setTestPhone(e.target.value)}/>
+          </label>
+          <button type="button" className="btn-primary" disabled={testBusy||!testPhoneValid}
+            onClick={()=>{setTestResult(null);setTestConfirm(true);}}>
+            <Send size={16}/>Send test SMS
+          </button>
+        </div>
+        {!testPhoneValid&&testPhone.trim()&&<p className="mt-2 text-xs text-rose-700">Enter a valid Ghana mobile number.</p>}
+        {testResult&&<div role={testResult.kind==="error"?"alert":"status"}
+          className={"mt-4 flex items-start gap-3 rounded-xl border p-4 "+(
+            testResult.kind==="success"?"border-emerald-200 bg-emerald-50 text-emerald-950":
+            testResult.kind==="error"?"border-rose-200 bg-rose-50 text-rose-950":
+            "border-sky-200 bg-sky-50 text-sky-950"
+          )}>
+          {testResult.kind==="success"?<CircleCheck size={21} className="shrink-0"/>:<CircleAlert size={21} className="shrink-0"/>}
+          <div className="flex-1"><p className="font-bold">{testResult.title}</p><p className="mt-1 text-sm leading-6">{testResult.message}</p></div>
+          <button type="button" aria-label="Dismiss test result" className="rounded-lg p-1" onClick={()=>setTestResult(null)}>✕</button>
+        </div>}
+      </section>
+      {testConfirm&&<Modal title="Confirm paid SMS test" onClose={()=>setTestConfirm(false)}>
+        <div className="space-y-4">
+          <p className="text-sm leading-6">Send one real <strong>EDUREPORT</strong> test message to <strong>{testPhone}</strong>?</p>
+          <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+            Confirm this recipient agreed to receive the test. This may deduct an Arkesel SMS credit.
+            It will not create or change a student payment.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={()=>setTestConfirm(false)}>Cancel</button>
+            <button type="button" className="btn-primary" disabled={testBusy} onClick={()=>void sendTestSms()}>
+              <Send size={16}/>Confirm and send
+            </button>
+          </div>
+        </div>
+      </Modal>}
       <section className="surface rounded-2xl p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 className="flex items-center gap-2 text-lg font-bold"><Building2 size={20} className="text-emerald-700"/>School-by-school SMS usage</h2>
