@@ -15,6 +15,14 @@ type Usage = {
   credits_used: number;
   opted_in_staff: number;
 };
+type Readiness = {
+  api_key_configured: boolean;
+  edge_live_enabled: boolean;
+  pilot_restrictions_configured: boolean;
+  database_sending_enabled: boolean;
+  sender_id: string;
+  sender_approval_verified: boolean;
+};
 type Dashboard = {
   provider: string;
   sender_id: string;
@@ -47,6 +55,7 @@ export default function CentralSMS() {
   const [info, setInfo] = useState<Dashboard | null>(null);
   const [credits, setCredits] = useState<string | null>(null);
   const [gatewayConnected, setGatewayConnected] = useState(false);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
@@ -61,6 +70,7 @@ export default function CentralSMS() {
       const { data: gateway, error: gatewayError } = await db.functions.invoke("sms-gateway", {
         body: { action: "balance" },
       });
+      setReadiness(!gatewayError ? (gateway?.readiness ?? null) : null);
       if (!gatewayError && gateway?.connected) {
         setGatewayConnected(true);
         setCredits(readableCredits(gateway.balance));
@@ -80,6 +90,13 @@ export default function CentralSMS() {
   if (!workspace.operator) return <Restricted/>;
 
   const total = info?.totals;
+  const checks = [
+    { label: "Arkesel API key", ready: readiness?.api_key_configured ?? false },
+    { label: "Arkesel balance API responds", ready: gatewayConnected },
+    { label: "Pilot school and phone allowlist", ready: readiness?.pilot_restrictions_configured ?? false },
+    { label: "Edge Function live-send switch", ready: readiness?.edge_live_enabled ?? false },
+    { label: "Database sending switch", ready: readiness?.database_sending_enabled ?? false },
+  ];
   const cards = [
     { title: "SMS credits remaining", value: credits ?? "—", sub: gatewayConnected ? "Provider balance" : "Connect Arkesel securely to display this", icon: Wallet },
     { title: "Requests submitted", value: total?.submitted ?? 0, sub: "Accepted by Arkesel, not necessarily delivered", icon: Send },
@@ -119,9 +136,29 @@ export default function CentralSMS() {
       {!info?.sending_enabled&&<div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <CircleAlert size={20} className="shrink-0"/>
         <div><strong>Live SMS is not activated.</strong>
-          <p className="mt-1 leading-6">The EDUREPORT sender request has been submitted for approval. Secure provider credentials and a separate activation step are required before SMS can be sent. Clicking Notify still creates the existing in-app alert without consuming SMS credits.</p>
+          <p className="mt-1 leading-6">EDUREPORT sender-ID network whitelisting is pending. A message arriving through the Arkesel dashboard does not prove API approval on all networks. Provider credentials and a restricted pilot activation are needed before phone delivery can be tested. Notify still creates the in-app alert without spending SMS credits.</p>
         </div>
       </div>}
+      <section className="surface rounded-2xl p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <ShieldCheck size={22} className="shrink-0 text-emerald-700"/>
+          <div>
+            <h2 className="text-lg font-bold">Provider connection and pilot readiness</h2>
+            <p className="mt-1 text-sm text-muted">Read-only checks from the secure server. API credentials and pilot phone numbers are never displayed here.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {checks.map(check => <div key={check.label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm">
+            <span>{check.label}</span>
+            <span className={"shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold "+(check.ready?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-900")}>
+              {check.ready?"Ready":"Not ready"}
+            </span>
+          </div>)}
+        </div>
+        <p className="mt-3 text-xs leading-5 text-amber-800">
+          These checks cannot confirm sender-ID whitelisting or handset delivery. Sending requires verified recipient consent, a staged test, and explicit production authorization.
+        </p>
+      </section>
       <section className="surface rounded-2xl p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 className="flex items-center gap-2 text-lg font-bold"><Building2 size={20} className="text-emerald-700"/>School-by-school SMS usage</h2>
