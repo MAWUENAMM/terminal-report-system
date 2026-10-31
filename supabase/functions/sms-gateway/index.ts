@@ -118,6 +118,17 @@ Deno.serve(async (request: Request) => {
       .eq("must_change_password", false).eq("sms_opt_in", true)
       .in("role", ["ADMIN", "ACCOUNTANT"]);
     if (recipientsError) return reply(origin, 503, { error: "Unable to verify pilot recipients" });
+    // One handset may be registered to multiple staff accounts. Never spend two
+    // SMS credits on that handset for the same payment during the pilot.
+    const pilotPhones = (recipients || []).map((r) => r.phone);
+    if (new Set(pilotPhones).size !== pilotPhones.length) {
+      return reply(origin, 409, {
+        error: "Multiple opted-in staff share a phone number. Use unique pilot recipient phones or opt out one account before sending.",
+      });
+    }
+    if (pilotPhones.length === 0) {
+      return reply(origin, 409, { error: "No opted-in pilot recipients. No SMS queued." });
+    }
     // Fail the whole attempt rather than silently sending some recipients or
     // queueing phone numbers outside the authorized pilot allowlist.
     if ((recipients || []).some((r) => !allowedPilotPhones.has(r.phone))) {
