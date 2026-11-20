@@ -63,7 +63,7 @@ export interface Student {
   classId: string;
   guardianName?: string;
   guardianPhone?: string;
-  status: "ACTIVE" | "TRANSFERRED" | "WITHDRAWN";
+  status: "ACTIVE" | "TRANSFERRED" | "WITHDRAWN" | "GRADUATED";
   createdAt: string;
 }
 
