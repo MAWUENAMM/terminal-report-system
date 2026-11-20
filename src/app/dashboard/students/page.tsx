@@ -12,6 +12,7 @@ export default function Students() {
     [query, setQuery] = useState(""),
     [classFilter, setClassFilter] = useState(""),
     [genderFilter, setGenderFilter] = useState<GenderFilter>(""),
+    [statusFilter, setStatusFilter] = useState(""),
     [nameSort, setNameSort] = useState<NameSort>("az"),
     [draft, setDraft] = useState<Partial<Student> | null>(null),
     [importOpen, setImportOpen] = useState(false),
@@ -22,7 +23,7 @@ export default function Students() {
   const canManage = isLeader(w.profile.role),
     visible = filterSortStudents(w.students, {
       query, classId: classFilter, gender: genderFilter, order: nameSort,
-    });
+    }).filter((student)=>!statusFilter||student.status===statusFilter);
   const recordedLearners = new Set(
     [
       ...w.scores,
@@ -39,7 +40,7 @@ export default function Students() {
         title="Learners"
         description={
           canManage
-            ? "Register learners, maintain their class placement or import an existing school list."
+            ? "Register learners, retrieve alumni records, mark graduation and download historical reports and transcripts."
             : "View the learners in your assigned classes. Your administrator or headmaster manages enrolment."
         }
       >
@@ -121,6 +122,18 @@ export default function Students() {
           <option value="F">Female only</option>
         </select>
         <select
+          aria-label="Filter enrollment status"
+          className="field max-w-xs"
+          value={statusFilter}
+          onChange={(e)=>setStatusFilter(e.target.value)}
+        >
+          <option value="">All learners (including former students)</option>
+          <option value="ACTIVE">Currently enrolled</option>
+          <option value="GRADUATED">Graduated / Alumni</option>
+          <option value="TRANSFERRED">Transferred</option>
+          <option value="WITHDRAWN">Withdrawn</option>
+        </select>
+        <select
           aria-label="Sort learners by name"
           className="field max-w-xs"
           value={nameSort}
@@ -174,7 +187,16 @@ export default function Students() {
                           >
                             Edit
                           </button>
-                          <button
+                          {s.status==="ACTIVE"&&<button
+                            className="font-semibold text-emerald-700"
+                            disabled={busy}
+                            onClick={()=> {
+                              if(confirm(`Mark ${fullName(s)} as graduated? Completed term reports will remain searchable and eligible for transcripts. Close the final scored term first.`))
+                                void run(()=>updateRow("students",s.id,{status:"GRADUATED"}),
+                                  "Learner graduated; their academic record remains available.");
+                            }}
+                          >Graduate</button>}
+                          {s.status!=="GRADUATED"&&<button
                             className="font-semibold text-[var(--g-green)]"
                             disabled={busy}
                             onClick={() => {
@@ -196,10 +218,13 @@ export default function Students() {
                             }}
                           >
                             {s.status === "ACTIVE" ? "Withdraw" : "Restore"}
-                          </button>
+                          </button>}
+                          {s.status==="GRADUATED"&&<span className="text-xs font-bold text-emerald-800">
+                            Alumni record preserved
+                          </span>}
                           <button
                             className="text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                            disabled={busy || protectedRecords}
+                            disabled={busy || protectedRecords || s.status === "GRADUATED"}
                             onClick={() => {
                               if (
                                 confirm(
@@ -349,7 +374,7 @@ export default function Students() {
                     })
                   }
                 >
-                  {["ACTIVE", "TRANSFERRED", "WITHDRAWN"].map((s) => (
+                  {["ACTIVE", "TRANSFERRED", "WITHDRAWN", "GRADUATED"].map((s) => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>
