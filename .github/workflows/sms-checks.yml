@@ -10,13 +10,16 @@ on:
       - "src/app/dashboard/finance/**"
       - "src/app/dashboard/sms/**"
       - "src/app/dashboard/profile/**"
+      - "src/app/dashboard/guardian-sms/**"
       - "src/app/dashboard/staff/**"
       - "src/components/layout/DashboardShell.tsx"
       - "src/lib/models.ts"
       - "supabase/functions/sms-gateway/**"
+      - "supabase/functions/guardian-messages/**"
       - "supabase/functions/school-admin/**"
       - "supabase/migrations/*sms*"
       - "supabase/migrations/*sender*"
+      - "supabase/migrations/*guardian*"
       - "tests/sms-sender-routing.sql"
       - "tests/sms-staging-one-use.sql"
       - "supabase/staging/**"
@@ -50,7 +53,7 @@ jobs:
       # DashboardShell has pre-existing React compiler lint failures unrelated to this feature.
       # It is covered by the Vercel TypeScript/build verification.
       - name: Lint changed SMS and finance UI
-        run: npx eslint src/app/dashboard/profile/page.tsx src/app/dashboard/staff/page.tsx src/app/dashboard/sms/page.tsx src/app/dashboard/finance/page.tsx src/lib/models.ts
+        run: npx eslint src/app/dashboard/profile/page.tsx src/app/dashboard/staff/page.tsx src/app/dashboard/sms/page.tsx src/app/dashboard/guardian-sms/page.tsx src/app/dashboard/finance/page.tsx src/lib/models.ts
 
   database:
     name: Disposable SMS RLS and duplicate-send prevention tests
