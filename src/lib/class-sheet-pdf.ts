@@ -50,7 +50,7 @@ function footers(doc: PDF, caption: string): void {
   }
 }
 
-function tableTheme(doc: PDF, fontSize = 8) {
+function tableTheme(fontSize = 8) {
   return {
     theme: "striped" as const,
     startY: 42,
@@ -82,7 +82,7 @@ export function exportClassResultsPdf(
 
   if (kind === "performance") {
     autoTable(doc, {
-      ...tableTheme(doc, 9),
+      ...tableTheme(9),
       head: [["No.", "Full name", "Gender", "Total", "Average", "Position", "Subjects"]],
       body: records.map((row, i) => [
         String(i + 1),
@@ -113,14 +113,14 @@ export function exportClassResultsPdf(
     ]);
     const fontSize = sheet.subjects.length > 11 ? 6.8 : sheet.subjects.length > 7 ? 7.5 : 8.5;
     autoTable(doc, {
-      ...tableTheme(doc, fontSize),
+      ...tableTheme(fontSize),
       head: [headingRow],
       body: tableRows,
       columnStyles: {
         0: { cellWidth: 11 },
         1: { cellWidth: sheet.subjects.length > 7 ? 50 : 62 },
       },
-      styles: { ...tableTheme(doc, fontSize).styles, cellPadding: 2.2, overflow: "linebreak" },
+      styles: { ...tableTheme(fontSize).styles, cellPadding: 2.2, overflow: "linebreak" },
     });
   }
 
@@ -143,7 +143,7 @@ export function exportClassListPdf(
   if (!active.length) throw new Error("No active learners match the selected class and filters.");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   autoTable(doc, {
-    ...tableTheme(doc, 9),
+    ...tableTheme(9),
     head: [["No.", "Student name", "Admission no.", "Class", "Gender"]],
     body: active.map((student, i) => [
       String(i + 1), fullName(student), student.admission_number,
