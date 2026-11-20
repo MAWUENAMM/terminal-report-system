@@ -23,7 +23,11 @@ import { Field, Modal } from "@/components/ui";
 import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
 import { currentSnapshot, downloadReport } from "@/lib/reporting";
-import { fullName, isLeader, type Student } from "@/lib/models";
+import { fullName, isLeader, type Student, type ReportSnapshot } from "@/lib/models";
+import {
+  latestArchivedTerms, summarizeAcademicTerm, ordinalPosition,
+  type ArchivedAcademicTerm,
+} from "@/lib/academic-records";
 import { computePositions, getGrade, getPerformanceRemark } from "@/lib/grading";
 import {
   removeStudentPhoto,
@@ -61,6 +65,8 @@ export default function StudentProfile({ student, onClose }: Props) {
   const [photoEditing, setPhotoEditing] = useState(false);
   const [notes, setNotes] = useState<Record<string, string | number>>({});
   const [downloading, setDownloading] = useState(false);
+  const [generatingTranscript, setGeneratingTranscript] = useState(false);
+  const [historicPreview, setHistoricPreview] = useState<ArchivedAcademicTerm | null>(null);
 
   const cls = w.classes.find((c) => c.id === currentStudent.class_id);
   const leader = isLeader(w.profile.role);
@@ -180,6 +186,46 @@ export default function StudentProfile({ student, onClose }: Props) {
     }
   }
 
+  async function viewHistoricalTerm(archive: (typeof archives)[number]) {
+    await run(async () => {
+      const {data,error}=await browserClient().from("report_archives")
+        .select("id,student_id,school_id,academic_year,term,revision,created_at,snapshot")
+        .eq("id",archive.id).eq("school_id",w.school.id)
+        .eq("student_id",currentStudent.id).single();
+      if(error||!data)throw new Error(error?.message||"Historical report not found.");
+      setHistoricPreview(data as ArchivedAcademicTerm);
+    }, "Historical term loaded.");
+  }
+
+  async function generateTranscript() {
+    if(!leader||generatingTranscript)return;
+    setGeneratingTranscript(true);
+    try {
+      await run(async()=>{
+        // Current school RLS and backend issuance authorization both apply.
+        const {data,error}=await browserClient().from("report_archives")
+          .select("id,student_id,school_id,academic_year,term,revision,created_at,snapshot")
+          .eq("school_id",w.school.id).eq("student_id",currentStudent.id)
+          .order("academic_year",{ascending:true})
+          .order("term",{ascending:true}).order("revision",{ascending:false})
+          .limit(120);
+        if(error)throw new Error(error.message);
+        const selected=latestArchivedTerms((data||[]) as ArchivedAcademicTerm[]);
+        if(!selected.length)throw new Error("No finalized terms available. Close and archive each completed term first.");
+        const {generateAcademicTranscriptPdf}=await import("@/lib/academic-transcript-pdf");
+        const {imageUrlToPngDataUrl}=await import("@/lib/school-branding");
+        const brandUrl=await resolveSchoolLogoUrl(w.school.logo_url);
+        let logo:string|null=null;
+        if(brandUrl){try{logo=await imageUrlToPngDataUrl(brandUrl)}catch{/* Printable text header remains. */}}
+        const {data:reference,error:issueError}=await browserClient().rpc("issue_student_transcript",{
+          p_student_id:currentStudent.id,p_archive_ids:selected.map((a)=>a.id),
+        });
+        if(issueError||!reference)throw new Error(issueError?.message||"Transcript issuance was not authorized.");
+        generateAcademicTranscriptPdf(w.school,currentStudent,selected,String(reference),logo);
+      }, "Academic transcript PDF created. Verify with the school for an official signed copy.");
+    }finally{setGeneratingTranscript(false);}
+  }
+
   const scoreRows = [...snapshot.scores].sort((a, b) => {
     const ao = w.subjects.find((s) => s.id === a.subject_id)?.display_order ?? 999;
     const bo = w.subjects.find((s) => s.id === b.subject_id)?.display_order ?? 999;
@@ -279,6 +325,14 @@ export default function StudentProfile({ student, onClose }: Props) {
                     <Wallet className="h-4 w-4" /> Financial records
                   </Link>
                 )}
+                {leader && <button
+                  className="btn-secondary !py-2.5"
+                  disabled={!archives.length || busy || generatingTranscript}
+                  onClick={()=>void generateTranscript()}
+                >
+                  <FileText className="h-4 w-4" />
+                  {generatingTranscript?"Preparing transcript...":"Academic transcript (PDF)"}
+                </button>}
                 <button
                   className="btn-primary !py-2.5"
                   disabled={!snapshot.scores.length || busy || downloading}
@@ -306,6 +360,9 @@ export default function StudentProfile({ student, onClose }: Props) {
                   <p className="mt-1 text-sm text-slate-500">{currentStudent.admission_number}</p>
                   <p className="mt-1 text-xs font-semibold text-slate-400">{cls?.name || "Class not assigned"}</p>
                   <span className="mt-3 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{currentStudent.status}</span>
+                  {currentStudent.graduated_at&&<p className="mt-2 text-xs text-slate-500">
+                    Graduated {new Date(currentStudent.graduated_at).toLocaleDateString("en-GB")}
+                  </p>}
                 </div>
               </div>
 
@@ -404,9 +461,70 @@ export default function StudentProfile({ student, onClose }: Props) {
               )}
 
               {section === "history" && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Permanent report history</p><h3 className="mt-1 text-lg font-bold">Closed-term reports</h3>
-                  {archives.length ? <div className="mt-5 space-y-3">{archives.map((archive) => <div key={archive.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{archive.academic_year} · {termLabel(archive.term)} · Version {archive.revision}</p><p className="mt-1 text-xs text-slate-500">Archived {new Date(archive.created_at).toLocaleDateString("en-GB")}</p></div><button className="btn-secondary" onClick={() => void run(async () => { const { data, error } = await browserClient().from("report_archives").select("snapshot").eq("id", archive.id).single(); if (error) throw new Error(error.message); await downloadReport(data.snapshot, archive.revision); }, "Archived report downloaded.")}><Download className="mr-2 inline h-4 w-4" /> Download</button></div>)}</div> : <p className="mt-4 text-sm text-slate-500">No closed-term report has been archived for this learner yet.</p>}
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Academic record archive</p>
+                      <h3 className="mt-1 text-lg font-bold">Past term results and reports</h3>
+                      <p className="mt-1 max-w-lg text-xs leading-5 text-muted">
+                        Select a closed term to see the original class, subject marks, grades and attendance.
+                        Earlier archived versions remain preserved even after corrections or promotion.
+                      </p>
+                    </div>
+                    {leader&&<button className="btn-primary" disabled={!archives.length||busy||generatingTranscript}
+                      onClick={()=>void generateTranscript()}>
+                      <Download className="mr-2 inline h-4 w-4"/> Download multi-year transcript
+                    </button>}
+                  </div>
+                  {archives.length ? <div className="space-y-3">{archives.map((archive) => (
+                    <div key={archive.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold">{archive.academic_year} · {termLabel(archive.term)} · Revision {archive.revision}</p>
+                        <p className="mt-1 text-xs text-slate-500">Archived {new Date(archive.created_at).toLocaleDateString("en-GB")}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button className="btn-secondary" disabled={busy} onClick={()=>void viewHistoricalTerm(archive)}>
+                          <BookOpen className="mr-2 inline h-4 w-4"/> View marks
+                        </button>
+                        <button className="btn-secondary" disabled={busy} onClick={() => void run(async()=>{
+                          const {data,error}=await browserClient().from("report_archives")
+                            .select("snapshot").eq("id",archive.id).eq("school_id",w.school.id)
+                            .eq("student_id",currentStudent.id).single();
+                          if(error||!data)throw new Error(error?.message||"Archive not available.");
+                          await downloadReport(data.snapshot as ReportSnapshot,archive.revision);
+                        },"Archived term report downloaded.")}>
+                          <Download className="mr-2 inline h-4 w-4"/> PDF
+                        </button>
+                      </div>
+                    </div>
+                  ))}</div> : <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                    No finalized term reports yet. A term must be closed and archived before its results appear here.
+                  </p>}
+                  {historicPreview&&(()=>{
+                    const term=summarizeAcademicTerm(historicPreview);
+                    return <section className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div><h4 className="font-bold text-slate-900">{term.className} · {term.academicYear} · {termLabel(term.term)}</h4>
+                          <p className="mt-1 text-xs text-slate-500">Saved revision {historicPreview.revision}. Read-only finalized record.</p>
+                        </div>
+                        <button className="btn-secondary" onClick={()=>setHistoricPreview(null)}>Close preview</button>
+                      </div>
+                      <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                        <table className="data-table">
+                          <thead><tr><th>Subject</th><th>Mark / 100</th><th>Grade</th></tr></thead>
+                          <tbody>{term.subjects.length?term.subjects.map((score)=>(
+                            <tr key={score.id}><td>{score.name}</td><td>{score.score.toFixed(1)}</td><td>{score.grade}</td></tr>
+                          )):<tr><td colSpan={3}>No subject marks recorded for this term.</td></tr>}</tbody>
+                        </table>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-slate-800">
+                        Total: {term.total?.toFixed(1)??"—"} · Average: {term.average?.toFixed(1)??"—"}%
+                        · Grade: {term.grade} · Position: {ordinalPosition(term.position)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">Attendance: {term.attendance?
+                        `${term.attendance.daysPresent} / ${term.attendance.totalDays} days`:"Not recorded"}</p>
+                    </section>;
+                  })()}
                 </div>
               )}
             </main>
