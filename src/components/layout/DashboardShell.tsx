@@ -19,6 +19,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Moon,
   RefreshCw,
   Search,
@@ -99,6 +101,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const stored = window.localStorage.getItem("edureport:sidebar-expanded");
+    if (stored === "true") setSidebarExpanded(true);
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem("edureport:sidebar-expanded", String(sidebarExpanded)); }
+    catch { /* Manual toggle still works when storage is unavailable. */ }
     if (!sidebarExpanded) setNavQuery("");
   }, [sidebarExpanded]);
 
@@ -571,14 +579,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           "sticky top-0 hidden h-screen shrink-0 flex-col overflow-visible bg-[linear-gradient(180deg,#0a382b_0%,#07523b_55%,#063c2e_100%)] text-white shadow-[18px_0_50px_rgba(5,45,32,0.08)] transition-[width] duration-300 ease-out lg:flex " +
           (sidebarExpanded ? "w-[272px]" : "w-[84px]")
         }
-        onMouseEnter={() => setSidebarExpanded(true)}
-        onMouseLeave={() => setSidebarExpanded(false)}
-        onFocusCapture={() => setSidebarExpanded(true)}
-        onBlurCapture={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setSidebarExpanded(false);
-          }
-        }}
         aria-label="Dashboard sidebar"
       >
         <SidebarNavigation compact={!sidebarExpanded} />
@@ -613,6 +613,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               onClick={() => setMobile(true)}
             >
               <Menu size={22} />
+            </button>
+            <button
+              type="button"
+              className="hidden rounded-lg p-2 text-slate-700 transition hover:bg-slate-100 lg:inline-flex"
+              aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+              title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+              aria-expanded={sidebarExpanded}
+              onClick={() => setSidebarExpanded(value => !value)}
+            >
+              {sidebarExpanded ? <PanelLeftClose size={21} /> : <PanelLeftOpen size={21} />}
             </button>
             <div className="min-w-0">
               <span className="block truncate text-sm font-semibold">
