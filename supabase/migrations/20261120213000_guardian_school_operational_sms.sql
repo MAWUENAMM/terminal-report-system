@@ -94,7 +94,6 @@ begin
     join public.students s on s.id=c.student_id and s.school_id=c.school_id
     where c.school_id=p_school_id and s.status='ACTIVE'
       and c.student_id=any(p_student_ids) and c.consent_status<>'OPTED_OUT' and (c.contact_verified_at is not null or (c.consent_status='OPTED_IN' and c.consent_recorded_at is not null))
-      and c.consent_recorded_at is not null
       and not exists (
         select 1 from public.guardian_sms_contacts blocked
         where blocked.school_id=c.school_id and blocked.phone_e164=c.phone_e164
@@ -123,7 +122,6 @@ begin
   join public.students s on s.id=c.student_id and s.school_id=c.school_id
   where c.school_id=p_school_id and s.status='ACTIVE'
     and c.student_id=any(p_student_ids) and c.consent_status<>'OPTED_OUT' and (c.contact_verified_at is not null or (c.consent_status='OPTED_IN' and c.consent_recorded_at is not null))
-    and c.consent_recorded_at is not null
       and not exists (
         select 1 from public.guardian_sms_contacts blocked
         where blocked.school_id=c.school_id and blocked.phone_e164=c.phone_e164
@@ -190,7 +188,7 @@ begin
       where contact.school_id=c.school_id
         and contact.student_id=any(r.student_ids)
         and contact.phone_e164=r.phone_e164 and contact.consent_status<>'OPTED_OUT' and (contact.contact_verified_at is not null or (contact.consent_status='OPTED_IN' and contact.consent_recorded_at is not null))
-        and contact.consent_recorded_at is not null and st.status='ACTIVE'
+        and st.status='ACTIVE'
         and not exists (
           select 1 from public.guardian_sms_contacts blocked
           where blocked.school_id=contact.school_id
