@@ -36,7 +36,7 @@ function printHeader(
 }
 
 function footers(doc: PDF, caption: string): void {
-  const pages = doc.internal.getNumberOfPages();
+  const pages = doc.getNumberOfPages();
   const pageHeight = doc.internal.pageSize.getHeight();
   const width = doc.internal.pageSize.getWidth();
   for (let page = 1; page <= pages; page++) {
@@ -124,7 +124,7 @@ export function exportClassResultsPdf(
     });
   }
 
-  const count = doc.internal.getNumberOfPages();
+  const count = doc.getNumberOfPages();
   for (let i = 1; i <= count; i++) {
     doc.setPage(i);
     printHeader(doc, w.school.name, heading, subtitle);
@@ -160,7 +160,7 @@ export function exportClassListPdf(
   });
   const title = "CLASS LIST";
   const subtitle = `${label} | ${w.school.academic_year} | ${filterDescription} | ${active.length} learners`;
-  const pageCount = doc.internal.getNumberOfPages();
+  const pageCount = doc.getNumberOfPages();
   for (let page = 1; page <= pageCount; page++) {
     doc.setPage(page);
     printHeader(doc, w.school.name, title, subtitle);
