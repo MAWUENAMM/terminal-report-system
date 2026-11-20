@@ -1,0 +1,45 @@
+name: EduReport Student Filters and Class Sheets
+
+on:
+  push:
+    branches:
+      - feature/student-filters-class-performance-ranks-2026-11-20
+  pull_request:
+    paths:
+      - "src/lib/class-sheets.ts"
+      - "src/lib/class-sheet-pdf.ts"
+      - "src/lib/reporting.ts"
+      - "src/app/dashboard/students/**"
+      - "src/app/dashboard/classes/**"
+      - "src/app/dashboard/reports/**"
+      - "tests/class-sheets.test.ts"
+      - ".github/workflows/class-sheets.yml"
+
+concurrency:
+  group: student-class-sheets-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Student filters, ranks, PDFs and application build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install pinned project dependencies
+        run: npm ci
+      - name: Run project tests, including class ranking and sorting
+        run: npm test
+      - name: Lint new class sheets and student UI
+        run: npx eslint src/lib/class-sheets.ts src/lib/class-sheet-pdf.ts src/app/dashboard/students/page.tsx src/app/dashboard/classes/page.tsx tests/class-sheets.test.ts
+      - name: Verify full production TypeScript and Next.js build
+        run: npm run build
