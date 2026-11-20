@@ -172,7 +172,7 @@ export default function GuardianSms(){
       <button className="btn-secondary" disabled={busy} onClick={()=>void refresh()}><RefreshCcw size={16}/>Refresh</button>
     </PageHeader>
     {testing&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <strong>STAGING ONLY.</strong> Contact management, previews and drafts are enabled. No paid guardian SMS can be sent here.
+      <strong>STAGING ONLY.</strong> The listed STAGING DEMO guardians use fictional contact details and simulated consent for UI testing only. They are not real parents or permission records. You can preview and save drafts; no paid parent SMS can be sent here.
     </div>}
     {error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
     {notice&&<p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</p>}
@@ -188,7 +188,7 @@ export default function GuardianSms(){
     </section>}
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="surface rounded-xl p-4"><Users className="text-emerald-700" size={20}/><p className="text-xs text-muted">Active learners</p><strong className="text-2xl">{enrolled}</strong></div>
-      <div className="surface rounded-xl p-4"><ShieldCheck className="text-emerald-700" size={20}/><p className="text-xs text-muted">Learners with guardian consent</p><strong className="text-2xl">{opted}</strong></div>
+      <div className="surface rounded-xl p-4"><ShieldCheck className="text-emerald-700" size={20}/><p className="text-xs text-muted">{testing?"Learners with synthetic test opt-in":"Learners with guardian consent"}</p><strong className="text-2xl">{opted}</strong></div>
       <div className="surface rounded-xl p-4"><MessageSquareText className="text-emerald-700" size={20}/><p className="text-xs text-muted">School Sender ID</p><strong>{senderOptions.join(" / ")}</strong></div>
     </div>
     {testing&&w.operator&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
@@ -268,7 +268,7 @@ export default function GuardianSms(){
           <thead><tr><th>Learner</th><th>Guardian</th><th>Phone</th><th>Consent</th><th>Actions</th></tr></thead>
           <tbody>{visible.slice(0,500).map(l=><tr key={l.id}>
             <td><strong>{l.first_name} {l.last_name}</strong><span className="block text-xs">{l.admission_number}</span></td>
-            <td>{l.guardian?.guardian_name||"—"}</td>
+            <td>{l.guardian?.guardian_name||"—"}{testing&&l.guardian?.guardian_name?.startsWith("STAGING DEMO")&&<span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900">Synthetic</span>}</td>
             <td className="font-mono text-xs">{l.guardian?.phone_e164||"Missing"}</td>
             <td>{l.guardian?.consent_status||"PENDING"}</td>
             <td>
