@@ -19,7 +19,7 @@ insert into public.school_users(id,auth_user_id,school_id,full_name,email,role) 
   'c1000000-0000-4000-8000-000000000001','Guardian Admin A','guardian-admin-a@example.invalid','ADMIN'),
  ('c1100000-0000-4000-8000-000000000002','c1100000-0000-4000-8000-000000000002',
   'c1000000-0000-4000-8000-000000000002','Guardian Admin B','guardian-admin-b@example.invalid','ADMIN'),
- ('c1100000-0000-4000-8000-000000000003','c1100000-0000-4000-8000-000000000001',
+ ('c1100000-0000-4000-8000-000000000003','c1100000-0000-4000-8000-000000000003',
   'c1000000-0000-4000-8000-000000000001','Guardian Teacher','guardian-teacher@example.invalid','CLASS_TEACHER');
 insert into public.classes(id,school_id,name,level,academic_year) values
  ('c1200000-0000-4000-8000-000000000001','c1000000-0000-4000-8000-000000000001','Primary 1','PRIMARY','2026/2027'),
