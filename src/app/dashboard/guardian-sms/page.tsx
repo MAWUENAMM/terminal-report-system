@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {MessageSquareText,Send,Users,RefreshCcw,ShieldCheck,FileSpreadsheet} from "lucide-react";
 import {useWorkspace} from "@/components/workspace";
 import {PageHeader} from "@/components/ui";
@@ -47,6 +47,8 @@ export default function GuardianSms(){
   const [sender,setSender]=useState("EDUREPORT");
   const [filter,setFilter]=useState("");
   const [edit,setEdit]=useState<string|null>(null);
+  const editSectionRef=useRef<HTMLElement|null>(null);
+  const editNameRef=useRef<HTMLInputElement|null>(null);
   const [guardianName,setGuardianName]=useState("");
   const [guardianPhone,setGuardianPhone]=useState("");
   const [consent,setConsent]=useState<string|null>(null);
@@ -128,6 +130,14 @@ export default function GuardianSms(){
       await reloadCustomTest();setCustomTestBusy(false);
     }
   }
+  useEffect(()=>{
+    if(!edit)return;
+    const frame=window.requestAnimationFrame(()=>{
+      editSectionRef.current?.scrollIntoView({behavior:"smooth",block:"center"});
+      editNameRef.current?.focus({preventScroll:true});
+    });
+    return ()=>window.cancelAnimationFrame(frame);
+  },[edit]);
   const visible=useMemo(()=>learners.filter(l=>
     [l.first_name,l.last_name,l.admission_number,l.guardian?.guardian_name||""]
       .join(" ").toLowerCase().includes(filter.toLowerCase())
@@ -285,10 +295,10 @@ export default function GuardianSms(){
       </div>
       {visible.length>500&&<p className="text-xs text-amber-800">Showing 500 rows. Use search for others.</p>}
     </section>
-    {edit&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
-      <h3 className="font-bold">Update guardian contact</h3>
+    {edit&&<section ref={editSectionRef} className="surface scroll-mt-24 rounded-2xl border-2 border-emerald-200 p-5">
+      <h3 className="font-bold">Edit guardian contact for {learners.find(l=>l.id===edit)?.first_name} {learners.find(l=>l.id===edit)?.last_name}</h3>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Guardian name<input className="field mt-1" value={guardianName} onChange={e=>setGuardianName(e.target.value)} maxLength={120}/></label>
+        <label className="text-sm">Guardian name<input ref={editNameRef} className="field mt-1" value={guardianName} onChange={e=>setGuardianName(e.target.value)} maxLength={120}/></label>
         <label className="text-sm">Ghana phone<input className="field mt-1" type="tel" value={guardianPhone} onChange={e=>setGuardianPhone(e.target.value)}/></label>
       </div>
       <p className="mt-2 text-xs text-muted">Changing the phone number resets SMS consent.</p>
