@@ -24,6 +24,12 @@ type Readiness = {
   sender_approval_verified: boolean;
 };
 type SenderChoice = { sender_id: string; school_id: string | null; enabled_for_school_sms: boolean };
+type StageTestStatus = {
+  staging_only: boolean;
+  available: boolean;
+  used: boolean;
+  message: string;
+};
 type Dashboard = {
   provider: string;
   sender_id: string;
@@ -67,6 +73,8 @@ export default function CentralSMS() {
     {sender_id:"EDUREPORT",school_id:null,enabled_for_school_sms:true},
   ]);
   const [testSender,setTestSender]=useState("EDUREPORT");
+  const stagingPreview = process.env.NEXT_PUBLIC_EDUREPORT_TESTING === "true";
+  const [stageTest,setStageTest]=useState<StageTestStatus|null>(null);
   const [testConfirm,setTestConfirm]=useState(false);
   const [testBusy,setTestBusy]=useState(false);
   const [testResult,setTestResult]=useState<{kind:"success"|"error"|"info";title:string;message:string}|null>(null);
@@ -83,6 +91,12 @@ export default function CentralSMS() {
         body: { action: "balance" },
       });
       setReadiness(!gatewayError ? (gateway?.readiness ?? null) : null);
+      if (stagingPreview) {
+        const { data: stageResult, error: stageError } = await db.functions.invoke("ark-academy-stage-test", {
+          body: { action: "status" },
+        });
+        setStageTest(!stageError && stageResult?.staging_only ? stageResult as StageTestStatus : null);
+      }
       const options: SenderChoice[] = !gatewayError && Array.isArray(gateway?.sender_options)
         ? gateway.sender_options.filter((option: SenderChoice) =>
             option?.sender_id === "EDUREPORT" || option?.sender_id === "Ark Academy")
@@ -102,7 +116,7 @@ export default function CentralSMS() {
     } finally {
       setLoading(false);
     }
-  }, [workspace.operator]);
+  }, [workspace.operator, stagingPreview]);
   useEffect(() => {
     void Promise.resolve().then(load);
   }, [load]);
@@ -110,10 +124,12 @@ export default function CentralSMS() {
   const testPhoneValid=/^((0[25]\d{8})|(233[25]\d{8})|(\+233[25]\d{8}))$/.test(normalizedPhone);
   async function sendTestSms(){
     setTestConfirm(false);
-    if(testBusy || !testPhoneValid)return;
+    if(testBusy || !testPhoneValid ||
+      (stagingPreview && (testSender!=="Ark Academy" || stageTest?.available!==true)))return;
     setTestBusy(true);setTestResult({kind:"info",title:"Submitting SMS test",message:"Contacting Arkesel. Do not repeat until this request completes."});
     try{
-      const {data,error:sendError}=await browserClient().functions.invoke("sms-gateway",{
+      const testFunction = stagingPreview ? "ark-academy-stage-test" : "sms-gateway";
+      const {data,error:sendError}=await browserClient().functions.invoke(testFunction,{
         body:{action:"test_send",test_phone:normalizedPhone,test_sender_id:testSender,
           test_confirmed:true,test_request_id:crypto.randomUUID()}
       });
@@ -221,6 +237,18 @@ export default function CentralSMS() {
           Test the selected SMS Sender ID without creating or changing a school payment.
           Every confirmed test can use one SMS credit. Only a Platform Administrator can send these tests.
         </p>
+        {stagingPreview && <div className={
+          "mt-4 rounded-xl border p-3 text-sm " +
+          (stageTest?.available ? "border-emerald-200 bg-emerald-50 text-emerald-950" :
+            "border-amber-200 bg-amber-50 text-amber-950")
+        }>
+          <p className="font-semibold">{stageTest?.available ?
+            "One Ark Academy paid staging test is authorized" :
+            stageTest?.used ? "One-time staging test already used" : "Staging test not ready"}</p>
+          <p className="mt-1">{stageTest?.message ||
+            "The staging diagnostic readiness could not be verified. No send is permitted."}</p>
+          <p className="mt-1">Use only the existing opted-in staging pilot number. School payment SMS stays disabled.</p>
+        </div>}
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="w-full max-w-xs">
             <span className="mb-1.5 block text-sm font-medium">SMS Sender ID</span>
@@ -237,13 +265,15 @@ export default function CentralSMS() {
               placeholder="0241234567 or +233241234567"
               value={testPhone} onChange={e=>setTestPhone(e.target.value)}/>
           </label>
-          <button type="button" className="btn-primary" disabled={testBusy||!testPhoneValid}
+          <button type="button" className="btn-primary" disabled={testBusy||!testPhoneValid||
+            (stagingPreview&&(testSender!=="Ark Academy"||stageTest?.available!==true))}
             onClick={()=>{setTestResult(null);setTestConfirm(true);}}>
             <Send size={16}/>Send test SMS
           </button>
         </div>
         {testSender==="Ark Academy"&&<p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
           Ark Academy is available for a manually confirmed Platform Administrator test while whitelisting is pending.
+          {stagingPreview ? " Only one paid attempt can be made, to the already-opted-in staging pilot phone." : ""}
           Carrier delivery is not guaranteed. This does not switch the school&apos;s automatic payment SMS sender.
         </p>}
         {!testPhoneValid&&testPhone.trim()&&<p className="mt-2 text-xs text-rose-700">Enter a valid Ghana mobile number.</p>}
@@ -274,6 +304,9 @@ export default function CentralSMS() {
       {testConfirm&&<Modal title="Confirm paid SMS test" onClose={()=>setTestConfirm(false)}>
         <div className="space-y-4">
           <p className="text-sm leading-6">Send one real <strong>{testSender}</strong> test message to <strong>{testPhone}</strong>?</p>
+          {stagingPreview && <p className="text-sm font-semibold text-amber-900">
+            One paid attempt only. The permit will be consumed even if Arkesel times out. Do not retry.
+          </p>}
           <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
             Confirm this recipient agreed to receive the test. This may deduct an Arkesel SMS credit.
             It will not create or change a student payment.
