@@ -238,6 +238,14 @@ export default function Reports() {
     }, "Archived PDF downloaded.");
   }
 
+  async function downloadClassSheet(kind: "performance" | "ranking") {
+    if (!selectedClass) return;
+    await run(async () => {
+      const { exportClassResultsPdf } = await import("@/lib/class-sheet-pdf");
+      exportClassResultsPdf(w, selectedClass.id, kind);
+    }, kind === "performance" ? "Performance sheet PDF downloaded." : "Class rank-position PDF downloaded.");
+  }
+
   return (
     <>
       <PageHeader
@@ -357,6 +365,31 @@ export default function Reports() {
           </div>
         </div>
       </section>
+
+      {!archive && selectedClass && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-900">Printable class performance and ranks</h2>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
+                Uses the selected class and current term. The performance sheet lists names,
+                total, average and position; the rank sheet adds every configured subject.
+                Missing marks display as a dash. Equal averages share a position.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-secondary" disabled={busy || !currentRows.length}
+                onClick={() => void downloadClassSheet("performance")}>
+                <Download className="mr-1.5 inline h-4 w-4" /> Performance sheet (PDF)
+              </button>
+              <button className="btn-primary" disabled={busy || !currentRows.length}
+                onClick={() => void downloadClassSheet("ranking")}>
+                <Download className="mr-1.5 inline h-4 w-4" /> New rank positions (PDF)
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {!archive && (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
