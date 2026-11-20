@@ -310,10 +310,12 @@ export default function GuardianSms(){
             <td>
               <button className="mr-3 text-sm font-semibold text-emerald-700" onClick={()=>{
                 setEdit(l.id);setGuardianName(l.guardian?.guardian_name||"");setGuardianPhone(l.guardian?.phone_e164||"");
+                window.requestAnimationFrame(()=>editSectionRef.current?.scrollIntoView({behavior:"smooth",block:"center"}));
               }}>Edit</button>
               {l.guardian&&<button className="text-sm font-semibold text-slate-700"
                 disabled={busy} onClick={()=>void act(async()=>{
                   const blocked=l.guardian?.consent_status!=="OPTED_OUT";
+                  if(!blocked&&!window.confirm("Has the guardian asked the school to resume SMS notices to this number?"))return "";
                   await call("set_sms_preference",{student_id:l.id,blocked});
                   clear();
                   return blocked?"SMS stopped for this contact.":"School notices restored for this contact.";
