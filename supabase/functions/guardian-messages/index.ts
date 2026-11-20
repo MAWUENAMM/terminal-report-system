@@ -328,10 +328,10 @@ Deno.serve(async(request:Request)=>{
       const samePhone=existing?.phone_e164===phone;
       const {error}=await db.from("guardian_sms_contacts").upsert({
         student_id:learner.id,school_id:schoolId,guardian_name:name,phone_e164:phone,
-        consent_status:samePhone?existing.consent_status:"PENDING",
-        consent_source:samePhone?existing.consent_source:null,
-        consent_recorded_at:samePhone?existing.consent_recorded_at:null,
-        consent_recorded_by:samePhone?existing.consent_recorded_by:null,
+        consent_status:samePhone&&existing?existing.consent_status:"PENDING",
+        consent_source:samePhone&&existing?existing.consent_source:null,
+        consent_recorded_at:samePhone&&existing?existing.consent_recorded_at:null,
+        consent_recorded_by:samePhone&&existing?existing.consent_recorded_by:null,
         contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
         contact_source:"SCHOOL_ADMIN_RECORD",updated_by:actor,
       },{onConflict:"student_id"});
@@ -364,10 +364,10 @@ Deno.serve(async(request:Request)=>{
         items.push({
           student_id:learner.id,school_id:schoolId,guardian_name:name,
           phone_e164:phone,
-          consent_status:unchanged?prior.consent_status:"PENDING",
-          consent_source:unchanged?prior.consent_source:null,
-          consent_recorded_at:unchanged?prior.consent_recorded_at:null,
-          consent_recorded_by:unchanged?prior.consent_recorded_by:null,
+          consent_status:unchanged&&prior?prior.consent_status:"PENDING",
+          consent_source:unchanged&&prior?prior.consent_source:null,
+          consent_recorded_at:unchanged&&prior?prior.consent_recorded_at:null,
+          consent_recorded_by:unchanged&&prior?prior.consent_recorded_by:null,
           contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
           contact_source:"SCHOOL_ADMIN_CSV_IMPORT",updated_by:actor,
         });
