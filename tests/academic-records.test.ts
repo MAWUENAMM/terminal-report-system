@@ -37,11 +37,11 @@ function archive(year: string, term: number, revision=1, className="Basic 1"): A
 
 test("ten-year pupil history retains every closed term from Basic 1 through later classes",()=>{
   const years=Array.from({length:10},(_,i)=>`${2026+i}/${2027+i}`);
-  const full=years.flatMap((year,i)=>[1,2,3].map((term)=>archive(year,term,1,`Basic ${i+1}`)));
+  const full=years.flatMap((year,i)=>[1,2,3].map((term)=>archive(year,term,1,`Basic ${Math.min(i+1,9)}`)));
   const latest=latestArchivedTerms(full.reverse());
   assert.equal(latest.length,30);
   assert.equal(latest[0].snapshot.class.name,"Basic 1");
-  assert.equal(latest[29].snapshot.class.name,"Basic 10");
+  assert.equal(latest[29].snapshot.class.name,"Basic 9");
   assert.equal(latest[0].academic_year,"2026/2027");
   assert.equal(latest[29].academic_year,"2035/2036");
 });
