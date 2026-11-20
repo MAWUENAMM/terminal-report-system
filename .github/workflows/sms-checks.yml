@@ -22,6 +22,7 @@ on:
       - "supabase/migrations/*guardian*"
       - "tests/sms-sender-routing.sql"
       - "tests/sms-staging-one-use.sql"
+      - "tests/guardian-sms-isolation.sql"
       - "supabase/staging/**"
       - "tests/finance-permissions.sql"
       - ".github/workflows/sms-checks.yml"
@@ -88,6 +89,8 @@ jobs:
             -v ON_ERROR_STOP=1 -f supabase/staging/ark_academy_one_use_test_gate.sql
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 -f tests/sms-staging-one-use.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 -f tests/guardian-sms-isolation.sql
       - name: Stop local services
         if: always()
         run: npx supabase stop --no-backup || true
