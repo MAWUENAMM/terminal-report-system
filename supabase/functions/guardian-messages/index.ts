@@ -321,8 +321,17 @@ Deno.serve(async(request:Request)=>{
       const {data:learner}=await db.from("students").select("id").eq("id",data.student_id)
         .eq("school_id",schoolId).eq("status","ACTIVE").maybeSingle();
       if(!learner)throw Error("Learner not active in this school");
+      const {data:existing,error:readError}=await db.from("guardian_sms_contacts")
+        .select("phone_e164,consent_status,consent_source,consent_recorded_at,consent_recorded_by")
+        .eq("student_id",learner.id).eq("school_id",schoolId).maybeSingle();
+      if(readError)throw Error("Cannot verify existing guardian messaging preference");
+      const samePhone=existing?.phone_e164===phone;
       const {error}=await db.from("guardian_sms_contacts").upsert({
         student_id:learner.id,school_id:schoolId,guardian_name:name,phone_e164:phone,
+        consent_status:samePhone?existing.consent_status:"PENDING",
+        consent_source:samePhone?existing.consent_source:null,
+        consent_recorded_at:samePhone?existing.consent_recorded_at:null,
+        consent_recorded_by:samePhone?existing.consent_recorded_by:null,
         contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
         contact_source:"SCHOOL_ADMIN_RECORD",updated_by:actor,
       },{onConflict:"student_id"});
@@ -337,6 +346,11 @@ Deno.serve(async(request:Request)=>{
       const map=new Map(students.filter(s=>s.status==="ACTIVE")
         .map(s=>[s.admission_number.trim().toLowerCase(),s]));
       const used=new Set<string>(),items=[];
+      const {data:existingContacts,error:readError}=await db.from("guardian_sms_contacts")
+        .select("student_id,phone_e164,consent_status,consent_source,consent_recorded_at,consent_recorded_by")
+        .eq("school_id",schoolId);
+      if(readError)throw Error("Cannot verify existing SMS opt-outs");
+      const current=new Map((existingContacts||[]).map(x=>[x.student_id,x]));
       for(const row of rows){
         const key=String(row.admission_number||"").trim().toLowerCase();
         const name=String(row.guardian_name||"").trim();
@@ -345,9 +359,15 @@ Deno.serve(async(request:Request)=>{
         if(!learner||used.has(key)||!phone||name.length<2||name.length>120)
           throw Error("Invalid or duplicate admission number, guardian or phone. Correct the CSV before import.");
         used.add(key);
+        const prior=current.get(learner.id);
+        const unchanged=prior?.phone_e164===phone;
         items.push({
           student_id:learner.id,school_id:schoolId,guardian_name:name,
           phone_e164:phone,
+          consent_status:unchanged?prior.consent_status:"PENDING",
+          consent_source:unchanged?prior.consent_source:null,
+          consent_recorded_at:unchanged?prior.consent_recorded_at:null,
+          consent_recorded_by:unchanged?prior.consent_recorded_by:null,
           contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
           contact_source:"SCHOOL_ADMIN_CSV_IMPORT",updated_by:actor,
         });
