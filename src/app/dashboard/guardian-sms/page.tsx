@@ -60,7 +60,8 @@ export default function GuardianSms(){
   const [classId,setClassId]=useState("");
   const [message,setMessage]=useState("");
   const [preview,setPreview]=useState<Preview|null>(null);
-  const [saved,setSaved]=useState<string|null>(null);
+  const sendKeyRef=useRef<string|null>(null);
+  const [sendSummary,setSendSummary]=useState("");
   const [history,setHistory]=useState<Campaign[]>([]);
   const [sendingConfirm,setSendingConfirm]=useState(false);
   const [customTest,setCustomTest]=useState<CustomTestState|null>(null);
@@ -144,7 +145,7 @@ export default function GuardianSms(){
   ),[learners,filter]);
   const enrolled=learners.length;
   const opted=learners.filter(x=>x.guardian?.consent_status==="OPTED_IN").length;
-  const clear=()=>{setPreview(null);setSaved(null);};
+  const clear=()=>{setPreview(null);setSendSummary("");sendKeyRef.current=null;};
   async function act(task:()=>Promise<string>){
     setBusy(true);setError("");setNotice("");
     try{setNotice(await task());await refresh();}
@@ -154,9 +155,37 @@ export default function GuardianSms(){
   const audience=()=>scope==="all"?{scope}:scope==="class"?{scope,class_id:classId}:{scope,selected_ids:selected};
   async function showPreview(){
     setBusy(true);setError("");setNotice("");
-    try{setPreview(await call("preview",{...audience(),message,sender_id:sender}));setSaved(null);}
+    try{
+      setPreview(await call("preview",{...audience(),message,sender_id:sender}));
+      setSendSummary("");
+      if(!sendKeyRef.current)sendKeyRef.current=crypto.randomUUID();
+    }
     catch(e){setError(e instanceof Error?e.message:"Preview failed");}
     finally{setBusy(false);}
+  }
+  async function sendGuardianMessage(){
+    if(busy||!preview||preview.can_send!==true)return;
+    setSendingConfirm(false);setBusy(true);setError("");setNotice("");
+    const requestKey=sendKeyRef.current||crypto.randomUUID();
+    sendKeyRef.current=requestKey;
+    try{
+      let result=await call("send_now",{...audience(),message,sender_id:sender,request_key:requestKey});
+      const campaign=String(result.campaign_id||"");
+      if(!campaign)throw Error("Sending result could not be verified.");
+      let batches=0;
+      while(Number(result.remaining||0)>0&&batches<49){
+        result=await call("send",{campaign_id:campaign});
+        batches++;
+      }
+      const note=Number(result.remaining||0)>0?
+        "Some messages are still queued. Check Message History.":
+        "SMS processed. Check Message History for provider acceptance and delivery.";
+      setSendSummary(note);setNotice(note);setPreview(null);sendKeyRef.current=null;
+      await refresh();
+    }catch(e){
+      setError((e instanceof Error?e.message:"SMS status uncertain")+
+        " Check Message History first; do not resend until you know the outcome.");
+    }finally{setBusy(false);}
   }
   async function importFile(file:File){
     try{
@@ -369,31 +398,26 @@ export default function GuardianSms(){
       </label>
       <p className="mt-1 text-xs text-muted">{message.length} / 320 characters. Provider rates and segments may vary.</p>
       <div className="mt-3 flex flex-wrap gap-3">
-        <button className="btn-secondary" disabled={busy||!message.trim()} onClick={()=>void showPreview()}>Preview recipients and credits</button>
-        <button className="btn-primary" disabled={busy||!preview||preview.eligible_guardians===0||!!saved}
-          onClick={()=>void act(async()=>{
-            const result=await call("draft",{...audience(),message,sender_id:sender,request_key:crypto.randomUUID()});
-            setSaved(String(result.id));return "Draft saved. No SMS has been sent.";
-          })}>Save SMS draft</button>
+        <button className="btn-secondary" disabled={busy||!message.trim()} onClick={()=>void showPreview()}>
+          Check recipients and cost
+        </button>
+        <button className="btn-primary" disabled={busy||!preview||preview.eligible_guardians===0||preview.can_send!==true}
+          onClick={()=>setSendingConfirm(true)}><Send size={16}/> Send SMS now</button>
       </div>
       {preview&&<div className="mt-4 rounded-xl border bg-slate-50 p-4 text-sm">
-        <h3 className="font-bold">Review before sending</h3>
+        <h3 className="font-bold">Ready to send</h3>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <span>{preview.selected_learners} learners selected</span>
-          <span>{preview.eligible_guardians} unique eligible guardians</span>
-          <span>{preview.estimated_credits} estimated credits</span>
-          <span>{preview.missing} missing phone records</span>
-          <span>{preview.consent_needed} without SMS consent</span>
-          <span>{preview.duplicates} duplicate phones removed</span>
+          <span>{preview.eligible_guardians} unique guardian phones</span>
+          <span>{preview.estimated_credits} estimated SMS credits</span>
+          <span>{preview.missing} missing contacts</span>
+          <span>{preview.consent_needed} unavailable or blocked</span>
+          <span>{preview.duplicates} duplicate numbers removed</span>
         </div>
         <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white p-3">{preview.message_preview}</p>
+        {preview.can_send!==true&&<p className="mt-2 text-xs text-amber-800">Paid sending is currently disabled for this school or environment.</p>}
       </div>}
-      {saved&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-        <strong>Draft saved.</strong> Campaign ID: <span className="font-mono text-xs">{saved}</span>
-        <button className="btn-primary mt-3 block" disabled={busy||testing||preview?.can_send!==true} onClick={()=>setSendingConfirm(true)}>
-          Send saved campaign</button>
-        {(testing||preview?.can_send!==true)&&<p className="mt-1 text-xs text-amber-800">{testing?"Staging sending is disabled. Draft preview only.":"Parent messaging is available for drafts. Paid sending is not activated until the sender and consent rollout is verified."}</p>}
-      </div>}
+      {sendSummary&&<p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm">{sendSummary}</p>}
     </section>
     <section className="surface rounded-2xl p-5">
       <h2 className="text-lg font-bold">Message history</h2>
@@ -405,19 +429,18 @@ export default function GuardianSms(){
         <td className="max-w-xs truncate">{c.message_body}</td>
       </tr>)}</tbody></table>{!history.length&&<p className="p-3 text-sm text-muted">No custom messages yet.</p>}</div>
     </section>
-    {sendingConfirm&&<div role="dialog" aria-modal="true" aria-label="Confirm SMS send"
+    {sendingConfirm&&<div role="dialog" aria-modal="true" aria-label="Confirm guardian SMS"
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h3 className="font-bold">Confirm paid guardian SMS</h3>
-        <p className="mt-2 text-sm">Send to {preview?.eligible_guardians||0} unique guardians? Approximately {preview?.estimated_credits||0} SMS credits may be required.</p>
-        <p className="mt-2 text-sm text-amber-800">Confirm only once. Do not retry an uncertain provider response.</p>
+        <h3 className="text-lg font-bold">Send SMS now?</h3>
+        <p className="mt-2 text-sm">Send as <strong>{sender}</strong> to <strong>{preview?.eligible_guardians||0}</strong> guardian phone(s)?
+          Estimated cost: <strong>{preview?.estimated_credits||0} SMS credits</strong>.</p>
+        <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{message}</p>
+        <p className="mt-2 text-xs text-muted">Only school-related notices. Uncertain Arkesel submissions are never retried automatically.</p>
         <div className="mt-4 flex justify-end gap-3">
-          <button className="btn-secondary" onClick={()=>setSendingConfirm(false)}>Cancel</button>
-          <button className="btn-primary" disabled={busy||testing} onClick={()=>void act(async()=>{
-            setSendingConfirm(false);
-            const result=await call("send",{campaign_id:saved});
-            return String(result.message||"Campaign request completed");
-          })}>Confirm send</button>
+          <button className="btn-secondary" disabled={busy} onClick={()=>setSendingConfirm(false)}>Cancel</button>
+          <button className="btn-primary" disabled={busy||testing||preview?.can_send!==true}
+            onClick={()=>void sendGuardianMessage()}>Confirm &amp; send</button>
         </div>
       </div>
     </div>}
