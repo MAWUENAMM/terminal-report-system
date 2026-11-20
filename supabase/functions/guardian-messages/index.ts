@@ -52,6 +52,7 @@ type Payload={
   rows?:{admission_number:string;guardian_name:string;phone:string}[];
   scope?:"selected"|"class"|"all";selected_ids?:string[];class_id?:string;
   message?:string;sender_id?:string;request_key?:string;campaign_id?:string;
+  test_request_id?:string;test_confirmed?:boolean;
 };
 
 Deno.serve(async(request:Request)=>{
@@ -85,6 +86,126 @@ Deno.serve(async(request:Request)=>{
   if(!isOperator&&staff.role!=="ADMIN")
     return reply(origin,403,{error:"School Administrator or Platform Administrator required"});
   const action=String(data.action||"");
+  // Independent one-time diagnostic for a custom text. It uses the existing
+  // opted-in staging pilot phone and never treats test numbers as parents.
+  if(action==="custom_test_status"||action==="custom_test_send"){
+    if(!isOperator)return reply(origin,403,{error:"Platform Administrator required for the paid diagnostic"});
+    if(!isStaging)return reply(origin,403,{error:"Diagnostic is available in staging only"});
+    const pilotSchool=Deno.env.get("ARKESEL_SMS_PILOT_SCHOOL_ID")||"";
+    const pilotPhones=(Deno.env.get("ARKESEL_SMS_PILOT_RECIPIENTS")||"")
+      .split(",").map(v=>v.trim()).filter(Boolean);
+    const pilotPhone=pilotPhones.length===1?pilotPhones[0]:"";
+    const allowPhone=normalized(pilotPhone)===pilotPhone&&!!pilotPhone;
+    const chosenSchool=data.school_id||staff.school_id;
+    const validPilot=uuid(pilotSchool)&&chosenSchool===pilotSchool&&allowPhone;
+    const {data:permit,error:permitError}=await db
+      .from("guardian_custom_test_permit")
+      .select("enabled,consumed_at").eq("singleton",true).maybeSingle();
+    const {data:cfg,error:cfgError}=await db.from("sms_central_settings")
+      .select("sending_enabled,sender_id,global_daily_limit,school_daily_limit")
+      .eq("singleton",true).maybeSingle();
+    const {data:schoolSender,error:senderError}=await db
+      .from("sms_school_sender_ids")
+      .select("sender_id,enabled_for_school_sms")
+      .eq("school_id",pilotSchool).maybeSingle();
+    const {data:pilotStaff,error:staffError}=await db.from("school_users")
+      .select("id,phone").eq("school_id",pilotSchool)
+      .eq("phone",pilotPhone).eq("active",true).eq("must_change_password",false)
+      .eq("sms_opt_in",true).in("role",["ADMIN","ACCOUNTANT"]);
+    const {data:pilotSchoolRecord,error:schoolError}=await db.from("schools")
+      .select("active,deleted_at").eq("id",pilotSchool).maybeSingle();
+    const {count:diagnostics,error:diagnosticsError}=await db.from("sms_test_outbox")
+      .select("id",{count:"exact",head:true});
+    const available=validPilot&&!permitError&&!!permit?.enabled&&!permit.consumed_at&&
+      !cfgError&&cfg?.sending_enabled===false&&cfg.sender_id==="EDUREPORT"&&
+      cfg.global_daily_limit===2&&cfg.school_daily_limit===2&&
+      !senderError&&schoolSender?.sender_id==="Ark Academy"&&
+      schoolSender.enabled_for_school_sms===false&&
+      !staffError&&Array.isArray(pilotStaff)&&pilotStaff.length===1&&
+      !schoolError&&pilotSchoolRecord?.active===true&&
+      pilotSchoolRecord.deleted_at===null&&
+      !diagnosticsError&&diagnostics===1&&!!providerKey;
+    if(action==="custom_test_status"){
+      const {data:recent}=await db.from("sms_test_outbox")
+        .select("created_at,status,sender_id,credits_used")
+        .like("message","TEST: %").order("created_at",{ascending:false}).limit(2);
+      return reply(origin,200,{
+        available,used:!!permit?.consumed_at,
+        sender_id:"Ark Academy",recipient_ending:allowPhone?pilotPhone.slice(-4):null,
+        max_one_message:true,history:recent||[],
+        message:available?"One real custom SMS can be sent to the opted-in staging pilot.":
+          permit?.consumed_at?"The one-time custom SMS test was already used.":
+          "Custom SMS test is not ready. No message will be sent.",
+      });
+    }
+    if(!available)return reply(origin,409,{
+      error:"One-time custom test is unavailable or has already been used."
+    });
+    const raw=typeof data.message==="string"?data.message.trim():"";
+    const message="TEST: "+raw;
+    if(raw.length<1||raw.length>140||segments(message)!==1||
+      /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(message))
+      return reply(origin,400,{error:"Write a custom test message that fits one SMS segment."});
+    if(!uuid(data.test_request_id)||data.test_confirmed!==true)
+      return reply(origin,400,{error:"Confirm the one-time paid test."});
+    // Atomic claim. Once consumed, a provider timeout never allows a retry.
+    const {data:claimed,error:claimError}=await db.from("guardian_custom_test_permit")
+      .update({consumed_at:new Date().toISOString(),consumed_by:actor,
+        request_key:data.test_request_id,updated_at:new Date().toISOString()})
+      .eq("singleton",true).eq("enabled",true).is("consumed_at",null)
+      .select("singleton").maybeSingle();
+    if(claimError||!claimed)return reply(origin,409,{
+      error:"Test authorization has already been used."
+    });
+    const {data:audit,error:auditError}=await db.from("sms_test_outbox")
+      .insert({request_key:data.test_request_id,requested_by:actor,
+        phone_e164:pilotPhone,sender_id:"Ark Academy",message,
+        status:"PROCESSING",send_started_at:new Date().toISOString()})
+      .select("id").maybeSingle();
+    if(auditError||!audit)return reply(origin,500,{
+      error:"Could not create a diagnostic audit record. Test permit consumed; no SMS sent."
+    });
+    let status="UNKNOWN",providerId:string|null=null,credits=0,verified=false;
+    let lastError:string|null="Provider response uncertain. Do not retry.";
+    try{
+      const call=await fetch("https://sms.arkesel.com/api/v2/sms/send",{
+        method:"POST",signal:AbortSignal.timeout(12000),
+        headers:{"Content-Type":"application/json","api-key":providerKey},
+        body:JSON.stringify({sender:"Ark Academy",message,recipients:[pilotPhone]}),
+      });
+      const body=await call.json().catch(()=>null);
+      const item=Array.isArray(body?.data)?body.data[0]:body?.data;
+      const accepted=call.ok&&body?.status==="success"&&
+        typeof item?.id==="string"&&item.id.length>0;
+      const ambiguous=call.ok&&body?.status==="success"&&!accepted;
+      status=accepted?"SUBMITTED":ambiguous?"UNKNOWN":"FAILED";
+      providerId=accepted?item.id:null;
+      lastError=accepted?null:ambiguous?
+        "Provider accepted request without tracking ID. Do not retry.":
+        "Provider rejected request. Review Arkesel records.";
+      const reported=item?.credits_used??body?.credits_used;
+      verified=accepted&&reported!==null&&reported!==undefined&&
+        (typeof reported==="number"||typeof reported==="string"&&/^\d+$/.test(reported))&&
+        Number.isSafeInteger(Number(reported))&&Number(reported)>=0;
+      credits=accepted?(verified?Number(reported):1):0;
+    }catch{/* UNKNOWN: never retry automatically. */}
+    const {error:writeError}=await db.from("sms_test_outbox")
+      .update({status,provider_message_id:providerId,credits_used:credits,
+        credits_verified:verified,last_error:lastError,updated_at:new Date().toISOString()})
+      .eq("id",audit.id).eq("status","PROCESSING");
+    if(writeError)return reply(origin,200,{mode:"UNKNOWN",
+      message:"Audit update uncertain. Check Arkesel and handset; do not retry."});
+    return reply(origin,200,{
+      mode:status==="SUBMITTED"?"TEST_SUBMITTED":
+        status==="FAILED"?"TEST_FAILED":"UNKNOWN",
+      sender_id:"Ark Academy",recipient_ending:pilotPhone.slice(-4),
+      message:status==="SUBMITTED"?
+        "Arkesel accepted the custom test SMS. Check the handset for delivery.":
+        status==="FAILED"?
+        "Arkesel rejected the custom SMS. One-time permit consumed.":
+        "Provider response is uncertain; check records and handset. Do not retry.",
+    });
+  }
   if(action==="schools"){
     const query=db.from("schools").select("id,name").eq("active",true)
       .is("deleted_at",null).order("name").limit(500);
