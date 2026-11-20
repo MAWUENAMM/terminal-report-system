@@ -63,7 +63,7 @@ Deno.serve(async (request: Request) => {
   const token = authorization.replace(/^Bearer\s+/i, "").trim();
   if (!token || !url || !anon || !serviceRole) return reply(origin, 401, { error: "Not signed in" });
 
-  let body: { action?: string; payment_id?: string; extra_phone?: string; extra_consent?: boolean; extra_reason?: string; test_phone?: string; test_request_id?: string; test_confirmed?: boolean };
+  let body: { action?: string; payment_id?: string; extra_phone?: string; extra_consent?: boolean; extra_reason?: string; test_phone?: string; test_request_id?: string; test_confirmed?: boolean; test_sender_id?: string };
   try {
     if (Number(request.headers.get("content-length") || 0) > 4096) throw new Error("Request too large");
     body = await request.json();
@@ -96,8 +96,16 @@ Deno.serve(async (request: Request) => {
         staff.length === 1 && allowedPilotPhones.size === 1 &&
         allowedPilotPhones.has(staff[0].phone);
     }
+    const { data: schoolSenderRows, error: senderConfigError } = await admin
+      .from("sms_school_sender_ids")
+      .select("school_id,sender_id,enabled_for_school_sms");
+    const senderOptions = [
+      { sender_id: "EDUREPORT", school_id: null, enabled_for_school_sms: true },
+      ...(!senderConfigError && Array.isArray(schoolSenderRows) ? schoolSenderRows : [])
+        .filter((row) => row.sender_id === "Ark Academy"),
+    ];
     const { data: testHistory } = await admin.from("sms_test_outbox")
-      .select("created_at,status,phone_e164,credits_used").order("created_at",{ascending:false}).limit(8);
+      .select("created_at,status,phone_e164,credits_used,sender_id").order("created_at",{ascending:false}).limit(8);
     const { count: testSubmitted } = await admin.from("sms_test_outbox")
       .select("id",{head:true,count:"exact"}).eq("status","SUBMITTED");
     const testInfo = {
@@ -105,7 +113,7 @@ Deno.serve(async (request: Request) => {
       recent: (testHistory || []).map((item) => ({
         date: item.created_at, status: item.status,
         phone_last4: String(item.phone_e164 || "").slice(-4),
-        credits_used: item.credits_used,
+        credits_used: item.credits_used, sender_id: item.sender_id,
       })),
     };
     const readiness = {
@@ -118,17 +126,17 @@ Deno.serve(async (request: Request) => {
       // A balance check NEVER proves sender ID/carrier approval or delivery.
       sender_approval_verified: false,
     };
-    if (!providerKey) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
+    if (!providerKey) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, sender_options: senderOptions, test_info: testInfo });
     try {
       const response = await fetch("https://sms.arkesel.com/api/v2/clients/balance-details", {
         method: "GET", headers: { "api-key": providerKey },
         signal: AbortSignal.timeout(10000),
       });
-      if (!response.ok) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
+      if (!response.ok) return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, sender_options: senderOptions, test_info: testInfo });
       const value = await response.json();
-      return reply(origin, 200, { dashboard: data, balance: value, connected: true, readiness, test_info: testInfo });
+      return reply(origin, 200, { dashboard: data, balance: value, connected: true, readiness, sender_options: senderOptions, test_info: testInfo });
     } catch {
-      return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, test_info: testInfo });
+      return reply(origin, 200, { dashboard: data, balance: null, connected: false, readiness, sender_options: senderOptions, test_info: testInfo });
     }
   }
 
@@ -145,6 +153,25 @@ Deno.serve(async (request: Request) => {
     if (settingsError || !configuration || !configuration.sending_enabled ||
         configuration.sender_id !== "EDUREPORT") {
       return reply(origin, 409, { error: "SMS sending is disabled" });
+    }
+    const selectedSender = body.test_sender_id || "EDUREPORT";
+    if (selectedSender !== "EDUREPORT" && selectedSender !== "Ark Academy") {
+      return reply(origin, 400, { error: "Invalid SMS Sender ID" });
+    }
+    if (selectedSender === "Ark Academy") {
+      // A pending Sender ID is available ONLY for an operator-confirmed paid test.
+      // No school payment notifications are activated by this action.
+      const { data: arkSender, error: arkSenderError } = await admin
+        .from("sms_school_sender_ids").select("school_id")
+        .eq("sender_id", "Ark Academy").maybeSingle();
+      if (arkSenderError || !arkSender) {
+        return reply(origin, 409, { error: "Ark Academy Sender ID is not configured" });
+      }
+      const { data: arkSchool, error: arkSchoolError } = await admin.from("schools")
+        .select("active,deleted_at").eq("id", arkSender.school_id).maybeSingle();
+      if (arkSchoolError || !arkSchool || !arkSchool.active || arkSchool.deleted_at !== null) {
+        return reply(origin, 409, { error: "Ark Academy is not an active sender owner" });
+      }
     }
     if (body.test_confirmed !== true ||
       !/^[0-9a-fA-F-]{36}$/.test(body.test_request_id || "")) {
@@ -167,11 +194,11 @@ Deno.serve(async (request: Request) => {
       return reply(origin, 409, { error: "EduReport central SMS daily budget is exhausted or unavailable" });
     }
     // Fixed provider diagnostic text, with no information about students or payments.
-    const message = "EDUREPORT: This is a live SMS test from the EduReport platform. No student or payment records were changed.";
+    const message = `${selectedSender}: This is a live SMS test from the EduReport platform. No student or payment records were changed.`;
     const { data: created, error: createError } = await admin.from("sms_test_outbox")
       .upsert({
         request_key: body.test_request_id, requested_by: user.data.user.id,
-        phone_e164: phone, sender_id: "EDUREPORT", message, status: "QUEUED",
+        phone_e164: phone, sender_id: selectedSender, message, status: "QUEUED",
       }, { onConflict: "request_key", ignoreDuplicates: true })
       .select("id").maybeSingle();
     if (createError) return reply(origin, 500, { error: "Unable to record SMS test request" });
@@ -189,7 +216,7 @@ Deno.serve(async (request: Request) => {
       const response = await fetch("https://sms.arkesel.com/api/v2/sms/send",{
         method:"POST", signal:AbortSignal.timeout(12000),
         headers:{"Content-Type":"application/json","api-key":providerKey},
-        body: JSON.stringify({sender:"EDUREPORT",message,recipients:[phone]})
+        body: JSON.stringify({sender:selectedSender,message,recipients:[phone]})
       });
       const value = await response.json().catch(()=>null);
       const item = Array.isArray(value?.data) ? value.data[0] : value?.data;
@@ -248,6 +275,7 @@ Deno.serve(async (request: Request) => {
     config.global_daily_limit === 1 && config.school_daily_limit === 1;
 
   let permittedSchool = "";
+  let expectedSchoolSender = "EDUREPORT";
   if (config.sending_enabled) {
     if (!edgeLiveEnabled || !providerKey || !activeModeConfigured) {
       return reply(origin, 200, {
@@ -263,6 +291,15 @@ Deno.serve(async (request: Request) => {
       return reply(origin, 403, { error: "SMS is restricted to an authorized school" });
     }
     permittedSchool = payment.school_id;
+    // Server-owned sender lookup. An unapproved school override stays EDUREPORT.
+    const { data: schoolSender, error: schoolSenderError } = await admin
+      .from("sms_school_sender_ids")
+      .select("sender_id,enabled_for_school_sms")
+      .eq("school_id",permittedSchool).maybeSingle();
+    if (schoolSenderError) return reply(origin, 503, { error: "School SMS sender settings unavailable" });
+    if (schoolSender?.enabled_for_school_sms) {
+      expectedSchoolSender = schoolSender.sender_id;
+    }
     // Platform-wide live access still requires an ACTIVE school. Suspended
     // or deleted tenants cannot trigger Arkesel even if their staff token
     // remains valid. The database RPC independently checks user permissions.
@@ -364,7 +401,7 @@ Deno.serve(async (request: Request) => {
   let submitted = 0, failed = 0, unknown = 0;
   for (const item of claimed || []) {
     try {
-      if (item.sender_id !== "EDUREPORT" || item.school_id !== permittedSchool ||
+      if (item.sender_id !== expectedSchoolSender || item.school_id !== permittedSchool ||
           (platformLive ? false :
             controlledLive ? !approvedSchoolIds.has(item.school_id)
               : !allowedPilotPhones.has(item.phone_e164))) {
