@@ -33,9 +33,17 @@ begin
         select 1 from public.academic_terms t
         where t.school_id=new.school_id and t.status='OPEN'
           and t.academic_year=current_school.academic_year and t.term=current_school.current_term
-          and exists (select 1 from public.scores sc where sc.student_id=new.id
-            and sc.academic_year=t.academic_year and sc.term=t.term)
-      ) then raise exception 'Close and archive the learner final scored term before graduation.'; end if;
+          and (
+            exists (select 1 from public.scores sc where sc.student_id=new.id
+              and sc.academic_year=t.academic_year and sc.term=t.term)
+            or exists (select 1 from public.attendance att where att.student_id=new.id
+              and att.academic_year=t.academic_year and att.term=t.term)
+            or exists (select 1 from public.affective_records af where af.student_id=new.id
+              and af.academic_year=t.academic_year and af.term=t.term)
+            or exists (select 1 from public.remarks re where re.student_id=new.id
+              and re.academic_year=t.academic_year and re.term=t.term)
+          )
+      ) then raise exception 'Close and archive the learner final term before graduation.'; end if;
       new.graduated_at:=coalesce(new.graduated_at,now());
     elsif old.status='GRADUATED' and new.status<>'GRADUATED' then
       new.graduated_at:=null;
@@ -58,6 +66,8 @@ create table if not exists public.transcript_issuances (
 create index if not exists transcript_issuances_student_time_idx
   on public.transcript_issuances(school_id,student_id,issued_at desc);
 alter table public.transcript_issuances enable row level security;
+create index if not exists report_archives_history_lookup_idx
+  on public.report_archives (school_id,student_id,academic_year,term,revision desc);
 revoke all on table public.transcript_issuances from public,anon,authenticated;
 grant select on public.transcript_issuances to authenticated;
 create policy transcript_issuances_school_leadership_read
@@ -174,6 +184,15 @@ begin
   if recorded<>cardinality(p_archive_ids) then
     raise exception 'Unrecognized or duplicate archived reports';
   end if;
+  if exists (
+    select 1 from public.report_archives chosen
+    where chosen.id=any(p_archive_ids) and exists(
+      select 1 from public.report_archives newer
+      where newer.school_id=chosen.school_id and newer.student_id=chosen.student_id
+        and newer.academic_year=chosen.academic_year and newer.term=chosen.term
+        and newer.revision>chosen.revision
+    )
+  ) then raise exception 'A newer corrected archive exists. Use the latest term revision.'; end if;
   insert into public.transcript_issuances(school_id,student_id,issued_by,archive_ids)
   values(school_uuid,p_student_id,auth.uid(),p_archive_ids)
   returning id into issued;
