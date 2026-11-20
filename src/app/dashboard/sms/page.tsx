@@ -23,6 +23,13 @@ type Readiness = {
   sender_id: string;
   sender_approval_verified: boolean;
 };
+type SenderChoice = { sender_id: string; school_id: string | null; enabled_for_school_sms: boolean };
+type StageTestStatus = {
+  staging_only: boolean;
+  available: boolean;
+  used: boolean;
+  message: string;
+};
 type Dashboard = {
   provider: string;
   sender_id: string;
@@ -59,9 +66,15 @@ export default function CentralSMS() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [testHistory,setTestHistory]=useState<{
-    submitted:number;recent:{date:string;status:string;phone_last4:string;credits_used:number}[];
+    submitted:number;recent:{date:string;status:string;phone_last4:string;credits_used:number;sender_id?:string}[];
   }>({submitted:0,recent:[]});
   const [testPhone,setTestPhone]=useState("");
+  const [senderOptions,setSenderOptions]=useState<SenderChoice[]>([
+    {sender_id:"EDUREPORT",school_id:null,enabled_for_school_sms:true},
+  ]);
+  const [testSender,setTestSender]=useState("EDUREPORT");
+  const stagingPreview = process.env.NEXT_PUBLIC_EDUREPORT_TESTING === "true";
+  const [stageTest,setStageTest]=useState<StageTestStatus|null>(null);
   const [testConfirm,setTestConfirm]=useState(false);
   const [testBusy,setTestBusy]=useState(false);
   const [testResult,setTestResult]=useState<{kind:"success"|"error"|"info";title:string;message:string}|null>(null);
@@ -78,6 +91,18 @@ export default function CentralSMS() {
         body: { action: "balance" },
       });
       setReadiness(!gatewayError ? (gateway?.readiness ?? null) : null);
+      if (stagingPreview) {
+        const { data: stageResult, error: stageError } = await db.functions.invoke("ark-academy-stage-test", {
+          body: { action: "status" },
+        });
+        setStageTest(!stageError && stageResult?.staging_only ? stageResult as StageTestStatus : null);
+      }
+      const options: SenderChoice[] = !gatewayError && Array.isArray(gateway?.sender_options)
+        ? gateway.sender_options.filter((option: SenderChoice) =>
+            option?.sender_id === "EDUREPORT" || option?.sender_id === "Ark Academy")
+        : [{sender_id:"EDUREPORT",school_id:null,enabled_for_school_sms:true}];
+      setSenderOptions(options);
+      setTestSender(previous => options.some(choice => choice.sender_id === previous) ? previous : "EDUREPORT");
       if (!gatewayError && gateway?.test_info) setTestHistory(gateway.test_info);
       if (!gatewayError && gateway?.connected) {
         setGatewayConnected(true);
@@ -91,7 +116,7 @@ export default function CentralSMS() {
     } finally {
       setLoading(false);
     }
-  }, [workspace.operator]);
+  }, [workspace.operator, stagingPreview]);
   useEffect(() => {
     void Promise.resolve().then(load);
   }, [load]);
@@ -99,11 +124,13 @@ export default function CentralSMS() {
   const testPhoneValid=/^((0[25]\d{8})|(233[25]\d{8})|(\+233[25]\d{8}))$/.test(normalizedPhone);
   async function sendTestSms(){
     setTestConfirm(false);
-    if(testBusy || !testPhoneValid)return;
+    if(testBusy || !testPhoneValid ||
+      (stagingPreview && (testSender!=="Ark Academy" || stageTest?.available!==true)))return;
     setTestBusy(true);setTestResult({kind:"info",title:"Submitting SMS test",message:"Contacting Arkesel. Do not repeat until this request completes."});
     try{
-      const {data,error:sendError}=await browserClient().functions.invoke("sms-gateway",{
-        body:{action:"test_send",test_phone:normalizedPhone,
+      const testFunction = stagingPreview ? "ark-academy-stage-test" : "sms-gateway";
+      const {data,error:sendError}=await browserClient().functions.invoke(testFunction,{
+        body:{action:"test_send",test_phone:normalizedPhone,test_sender_id:testSender,
           test_confirmed:true,test_request_id:crypto.randomUUID()}
       });
       if(sendError){
@@ -207,28 +234,56 @@ export default function CentralSMS() {
       <section className="surface rounded-2xl p-5 sm:p-6">
         <h2 className="flex items-center gap-2 text-lg font-bold"><Send size={21} className="text-emerald-700"/>Send a test SMS</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Test the EDUREPORT sender as often as your provider balance allows, without creating a school payment.
+          Test the selected SMS Sender ID without creating or changing a school payment.
           Every confirmed test can use one SMS credit. Only a Platform Administrator can send these tests.
         </p>
+        {stagingPreview && <div className={
+          "mt-4 rounded-xl border p-3 text-sm " +
+          (stageTest?.available ? "border-emerald-200 bg-emerald-50 text-emerald-950" :
+            "border-amber-200 bg-amber-50 text-amber-950")
+        }>
+          <p className="font-semibold">{stageTest?.available ?
+            "One Ark Academy paid staging test is authorized" :
+            stageTest?.used ? "One-time staging test already used" : "Staging test not ready"}</p>
+          <p className="mt-1">{stageTest?.message ||
+            "The staging diagnostic readiness could not be verified. No send is permitted."}</p>
+          <p className="mt-1">Use only the existing opted-in staging pilot number. School payment SMS stays disabled.</p>
+        </div>}
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="w-full max-w-xs">
+            <span className="mb-1.5 block text-sm font-medium">SMS Sender ID</span>
+            <select className="field" value={testSender} disabled={testBusy}
+              onChange={e=>setTestSender(e.target.value)}>
+              {senderOptions.map(choice=><option key={choice.sender_id} value={choice.sender_id}>
+                {choice.sender_id}{choice.sender_id==="Ark Academy"&&!choice.enabled_for_school_sms?" (test only · pending)":""}
+              </option>)}
+            </select>
+          </label>
           <label className="w-full max-w-sm">
             <span className="mb-1.5 block text-sm font-medium">Recipient phone number</span>
             <input className="field" type="tel" inputMode="tel" autoComplete="off" maxLength={20}
               placeholder="0241234567 or +233241234567"
               value={testPhone} onChange={e=>setTestPhone(e.target.value)}/>
           </label>
-          <button type="button" className="btn-primary" disabled={testBusy||!testPhoneValid}
+          <button type="button" className="btn-primary" disabled={testBusy||!testPhoneValid||
+            (stagingPreview&&(testSender!=="Ark Academy"||stageTest?.available!==true))}
             onClick={()=>{setTestResult(null);setTestConfirm(true);}}>
             <Send size={16}/>Send test SMS
           </button>
         </div>
+        {testSender==="Ark Academy"&&<p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+          Ark Academy is available for a manually confirmed Platform Administrator test while whitelisting is pending.
+          {stagingPreview ? " Only one paid attempt can be made, to the already-opted-in staging pilot phone." : ""}
+          Carrier delivery is not guaranteed. This does not switch the school&apos;s automatic payment SMS sender.
+        </p>}
         {!testPhoneValid&&testPhone.trim()&&<p className="mt-2 text-xs text-rose-700">Enter a valid Ghana mobile number.</p>}
         <p className="mt-3 text-sm text-muted">Test SMS requests accepted: <strong className="text-slate-900">{testHistory.submitted}</strong></p>
         {testHistory.recent.length>0&&<div className="mt-3 overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>Test date</th><th>Phone ending</th><th>Provider status</th><th>Estimated credits</th></tr></thead>
+            <thead><tr><th>Test date</th><th>Sender ID</th><th>Phone ending</th><th>Provider status</th><th>Estimated credits</th></tr></thead>
             <tbody>{testHistory.recent.map((test,i)=><tr key={test.date+"-"+i}>
               <td>{new Date(test.date).toLocaleString("en-GB")}</td>
+              <td>{test.sender_id||"EDUREPORT"}</td>
               <td>•••• {test.phone_last4}</td>
               <td className="font-medium">{test.status}</td>
               <td>{test.credits_used}</td>
@@ -248,7 +303,10 @@ export default function CentralSMS() {
       </section>
       {testConfirm&&<Modal title="Confirm paid SMS test" onClose={()=>setTestConfirm(false)}>
         <div className="space-y-4">
-          <p className="text-sm leading-6">Send one real <strong>EDUREPORT</strong> test message to <strong>{testPhone}</strong>?</p>
+          <p className="text-sm leading-6">Send one real <strong>{testSender}</strong> test message to <strong>{testPhone}</strong>?</p>
+          {stagingPreview && <p className="text-sm font-semibold text-amber-900">
+            One paid attempt only. The permit will be consumed even if Arkesel times out. Do not retry.
+          </p>}
           <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
             Confirm this recipient agreed to receive the test. This may deduct an Arkesel SMS credit.
             It will not create or change a student payment.
@@ -274,9 +332,14 @@ export default function CentralSMS() {
         {error?<p role="alert" className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>:null}
         {info && <div className="mt-5 overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>School</th><th>Opted-in staff</th><th>SMS requests</th><th>Submitted</th><th>Credits used</th></tr></thead>
+            <thead><tr><th>School</th><th>SMS sender</th><th>Opted-in staff</th><th>SMS requests</th><th>Submitted</th><th>Credits used</th></tr></thead>
             <tbody>{info.schools.map(s=><tr key={s.school_id}>
               <td className="font-semibold">{s.school_name}</td>
+              <td>
+                {senderOptions.find(choice=>choice.school_id===s.school_id&&choice.enabled_for_school_sms)?.sender_id||"EDUREPORT"}
+                {senderOptions.some(choice=>choice.school_id===s.school_id&&!choice.enabled_for_school_sms)&&
+                  <span className="ml-1 text-xs text-amber-700">(Ark Academy pending)</span>}
+              </td>
               <td>{s.opted_in_staff}</td><td>{s.messages}</td><td>{s.submitted}</td><td>{s.credits_used}</td>
             </tr>)}</tbody>
           </table>

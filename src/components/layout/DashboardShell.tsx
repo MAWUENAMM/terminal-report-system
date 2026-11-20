@@ -184,6 +184,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const platformPage = [
     "/dashboard/schools",
     "/dashboard/requests",
+    "/dashboard/guardian-sms",
     "/dashboard/profile",
   ].includes(path);
   const admin = w.profile.role === "ADMIN";
@@ -340,6 +341,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       label: "Central SMS",
       icon: MessageSquareText,
       show: w.operator,
+    },
+    {
+      path: "/dashboard/guardian-sms",
+      label: "Parent/Guardian SMS",
+      icon: MessageSquareText,
+      show: w.operator || admin,
     },
     {
       path: "/dashboard/requests",
