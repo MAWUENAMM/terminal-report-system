@@ -8,7 +8,7 @@ type Guardian={student_id:string;guardian_name:string;phone_e164:string;consent_
 type Learner={id:string;admission_number:string;first_name:string;last_name:string;class_id:string;guardian:Guardian|null};
 type School={id:string;name:string};
 type Choice={id:string;name:string};
-type Preview={selected_learners:number;eligible_guardians:number;missing:number;consent_needed:number;duplicates:number;segments:number;estimated_credits:number;message_preview:string};
+type Preview={selected_learners:number;eligible_guardians:number;missing:number;consent_needed:number;duplicates:number;segments:number;estimated_credits:number;message_preview:string;can_send?:boolean};
 type Campaign={id:string;created_at:string;sender_id:string;status:string;recipient_count:number;message_body:string};
 type CustomTestState={available:boolean;used:boolean;sender_id:string;recipient_ending:string|null;message:string;history?:{created_at:string;status:string;sender_id:string}[]};
 function parseCsv(csv:string){
@@ -380,9 +380,9 @@ export default function GuardianSms(){
       </div>}
       {saved&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
         <strong>Draft saved.</strong> Campaign ID: <span className="font-mono text-xs">{saved}</span>
-        <button className="btn-primary mt-3 block" disabled={busy||testing} onClick={()=>setSendingConfirm(true)}>
+        <button className="btn-primary mt-3 block" disabled={busy||testing||preview?.can_send!==true} onClick={()=>setSendingConfirm(true)}>
           Send saved campaign</button>
-        {testing&&<p className="mt-1 text-xs text-amber-800">Staging sending is disabled until authorized production release.</p>}
+        {(testing||preview?.can_send!==true)&&<p className="mt-1 text-xs text-amber-800">{testing?"Staging sending is disabled. Draft preview only.":"Parent messaging is available for drafts. Paid sending is not activated until the sender and consent rollout is verified."}</p>}
       </div>}
     </section>
     <section className="surface rounded-2xl p-5">
