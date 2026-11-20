@@ -168,7 +168,7 @@ begin
       'EDUREPORT','Phone-wide opt out should block siblings',1,
       array['c1300000-0000-4000-8000-000000000001'::uuid]);
   exception when others then
-    blocked:=sqlerrm like '%No opted-in guardians%'; end;
+    blocked:=sqlerrm like '%No school-authorized guardian contacts%'; end;
   perform pg_temp.guardian_expect(blocked,'One linked opt-out blocks same guardian phone');
   -- School-verified contacts receive ordinary school notices without falsely
   -- recording explicit opt-in; an opt-out still wins.
