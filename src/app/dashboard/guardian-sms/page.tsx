@@ -10,6 +10,7 @@ type School={id:string;name:string};
 type Choice={id:string;name:string};
 type Preview={selected_learners:number;eligible_guardians:number;missing:number;consent_needed:number;duplicates:number;segments:number;estimated_credits:number;message_preview:string};
 type Campaign={id:string;created_at:string;sender_id:string;status:string;recipient_count:number;message_body:string};
+type CustomTestState={available:boolean;used:boolean;sender_id:string;recipient_ending:string|null;message:string;history?:{created_at:string;status:string;sender_id:string}[]};
 function parseCsv(csv:string){
   const rows:string[][]=[];let r:string[]=[],c="",quoted=false;
   for(let i=0;i<csv.length;i++){
@@ -60,6 +61,11 @@ export default function GuardianSms(){
   const [saved,setSaved]=useState<string|null>(null);
   const [history,setHistory]=useState<Campaign[]>([]);
   const [sendingConfirm,setSendingConfirm]=useState(false);
+  const [customTest,setCustomTest]=useState<CustomTestState|null>(null);
+  const [customTestText,setCustomTestText]=useState("Hello, this is a custom message test from Ark Academy.");
+  const [customTestConfirm,setCustomTestConfirm]=useState(false);
+  const [customTestBusy,setCustomTestBusy]=useState(false);
+  const [customTestFeedback,setCustomTestFeedback]=useState("");
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
   const [error,setError]=useState(""),[notice,setNotice]=useState("");
   const call=useCallback(async(action:string,rest:Record<string,unknown>={})=>{
@@ -96,6 +102,32 @@ export default function GuardianSms(){
       if(Array.isArray(data?.schools))setSchools(data.schools);
     });
   },[permitted]);
+  const reloadCustomTest=useCallback(async()=>{
+    if(!testing||!w.operator)return;
+    try{
+      const result=await call("custom_test_status");
+      setCustomTest(result as CustomTestState);
+    }catch(e){
+      setCustomTest(null);
+      setCustomTestFeedback(e instanceof Error?e.message:"Custom SMS test status unavailable");
+    }
+  },[testing,w.operator,call]);
+  useEffect(()=>{void Promise.resolve().then(reloadCustomTest);},[reloadCustomTest]);
+  async function sendCustomTest(){
+    if(!customTest?.available||customTestBusy)return;
+    setCustomTestConfirm(false);setCustomTestBusy(true);setCustomTestFeedback("");
+    try{
+      const result=await call("custom_test_send",{
+        message:customTestText.trim(),
+        test_confirmed:true,test_request_id:crypto.randomUUID()
+      });
+      setCustomTestFeedback(String(result.message||"Custom SMS test request completed"));
+    }catch(e){
+      setCustomTestFeedback(e instanceof Error?e.message:"Could not verify the test outcome. Do not retry.");
+    }finally{
+      await reloadCustomTest();setCustomTestBusy(false);
+    }
+  }
   const visible=useMemo(()=>learners.filter(l=>
     [l.first_name,l.last_name,l.admission_number,l.guardian?.guardian_name||""]
       .join(" ").toLowerCase().includes(filter.toLowerCase())
@@ -159,6 +191,62 @@ export default function GuardianSms(){
       <div className="surface rounded-xl p-4"><ShieldCheck className="text-emerald-700" size={20}/><p className="text-xs text-muted">Learners with guardian consent</p><strong className="text-2xl">{opted}</strong></div>
       <div className="surface rounded-xl p-4"><MessageSquareText className="text-emerald-700" size={20}/><p className="text-xs text-muted">School Sender ID</p><strong>{senderOptions.join(" / ")}</strong></div>
     </div>
+    {testing&&w.operator&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
+      <h2 className="flex items-center gap-2 text-lg font-bold"><Send size={18}/>Real custom SMS — one-time test</h2>
+      <p className="mt-2 text-sm text-muted">
+        This sends one real SMS through Arkesel to the previously opted-in staging pilot phone only.
+        It does not contact parents or enable normal school payment SMS.
+      </p>
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+        <p>Sender ID: <strong>Ark Academy</strong></p>
+        <p>Recipient: <strong>{customTest?.recipient_ending?"Authorized pilot, ending "+customTest.recipient_ending:"Not verified"}</strong></p>
+        <p>Test availability: <strong>{customTest?.available?"Ready for one attempt":customTest?.used?"Already used":"Not ready"}</strong></p>
+        <p className="mt-1 text-xs text-muted">{customTest?.message||"Checking the one-time test setup…"}</p>
+      </div>
+      <label className="mt-3 block text-sm font-semibold">Write your custom test message
+        <textarea className="field mt-2 min-h-24 w-full" maxLength={140}
+          value={customTestText} disabled={customTestBusy||!customTest?.available}
+          onChange={e=>setCustomTestText(e.target.value)}/>
+      </label>
+      <p className="mt-1 text-xs text-muted">
+        The delivered message will start with TEST: and must fit a single SMS segment.
+        Only one paid attempt is allowed; an uncertain response cannot be retried.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button type="button" className="btn-primary"
+          disabled={!customTest?.available||!customTestText.trim()||customTestBusy}
+          onClick={()=>setCustomTestConfirm(true)}>Send one custom test SMS</button>
+        <button type="button" className="btn-secondary" disabled={customTestBusy}
+          onClick={()=>void reloadCustomTest()}>Check test status</button>
+      </div>
+      {customTestFeedback&&<p role="status" className="mt-3 rounded-xl bg-slate-100 p-3 text-sm">{customTestFeedback}</p>}
+      {customTest?.history?.length? <div className="mt-3 text-sm">
+        <p className="font-semibold">Custom diagnostic history</p>
+        {customTest.history.map((test,i)=><p className="mt-1" key={i}>
+          {new Date(test.created_at).toLocaleString("en-GB")} · {test.sender_id} · {test.status}
+        </p>)}
+      </div>:null}
+      {customTestConfirm&&<div role="dialog" aria-modal="true" aria-label="Confirm custom SMS test"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+          <h3 className="text-lg font-bold">Confirm one paid custom SMS</h3>
+          <p className="mt-2 text-sm">
+            Send one message from <strong>Ark Academy</strong> to the authorized
+            pilot phone ending <strong>{customTest?.recipient_ending||"—"}</strong>?
+          </p>
+          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{"TEST: "+customTestText.trim()}</p>
+          <p className="mt-2 text-sm text-amber-800">
+            One Arkesel SMS credit may be charged. This permission will be consumed even if the provider times out.
+            Do not retry an unknown result.
+          </p>
+          <div className="mt-4 flex justify-end gap-3">
+            <button className="btn-secondary" onClick={()=>setCustomTestConfirm(false)}>Cancel</button>
+            <button className="btn-primary" disabled={customTestBusy||!customTest?.available}
+              onClick={()=>void sendCustomTest()}>Confirm and send</button>
+          </div>
+        </div>
+      </div>}
+    </section>}
     <section className="surface rounded-2xl p-5">
       <h2 className="text-lg font-bold">Guardian contact book</h2>
       <p className="mt-1 text-sm text-muted">Match numbers to existing admission numbers. Imports are pending until actual guardian permission is recorded.</p>
