@@ -155,11 +155,11 @@ Deno.serve(async(request:Request)=>{
   };
   const summary=(students:Student[],contacts:Guardian[])=>{
     const byId=new Map(contacts.map(c=>[c.student_id,c]));
-    const phones=new Set<string>(),reasons={missing:0,consent_needed:0,duplicates:0};
+    const phones=new Set<string>(),blockedPhones=new Set(contacts.filter(c=>c.consent_status==="OPTED_OUT").map(c=>c.phone_e164)),reasons={missing:0,consent_needed:0,duplicates:0};
     for(const s of students){
       const contact=byId.get(s.id);
       if(!contact){reasons.missing++;continue;}
-      if(contact.consent_status!=="OPTED_IN"||!contact.consent_recorded_at){
+      if(contact.consent_status!=="OPTED_IN"||!contact.consent_recorded_at||blockedPhones.has(contact.phone_e164)){
         reasons.consent_needed++;continue;
       }
       if(phones.has(contact.phone_e164)){reasons.duplicates++;continue;}
@@ -317,11 +317,11 @@ Deno.serve(async(request:Request)=>{
       for(const item of claimed||[]){
         const {data:nowConsented,error:consentError}=await db.from("guardian_sms_contacts")
           .select("student_id,phone_e164,consent_status,consent_recorded_at")
-          .eq("school_id",schoolId).eq("phone_e164",item.phone_e164)
-          .in("student_id",item.student_ids);
-        const consentValid=!consentError&&Array.isArray(nowConsented)&&nowConsented.some(
-          (x)=>x.consent_status==="OPTED_IN"&&!!x.consent_recorded_at
-        );
+          .eq("school_id",schoolId).eq("phone_e164",item.phone_e164);
+        const consentValid=!consentError&&Array.isArray(nowConsented)&&
+          !nowConsented.some(x=>x.consent_status==="OPTED_OUT") && nowConsented.some(
+            (x)=>item.student_ids.includes(x.student_id)&&x.consent_status==="OPTED_IN"&&!!x.consent_recorded_at
+          );
         let status="UNKNOWN",providerId:string|null=null,credits=0,verified=false;
         let lastError:string|null="Provider response uncertain. Do not retry.";
         if(!consentValid){
