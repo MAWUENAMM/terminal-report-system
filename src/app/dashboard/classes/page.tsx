@@ -57,6 +57,22 @@ export default function Classes() {
                     ?.full_name ||
                     (c.class_teacher_id ? "Assigned" : "Not assigned")}
                 </p>
+                <button
+                  className="btn-secondary mt-4"
+                  disabled={busy || !w.students.some((s) => s.class_id === c.id && s.status === "ACTIVE")}
+                  onClick={() => void run(async () => {
+                    const { exportClassListPdf } = await import("@/lib/class-sheet-pdf");
+                    const { filterSortStudents } = await import("@/lib/class-sheets");
+                    exportClassListPdf(
+                      w,
+                      filterSortStudents(w.students, { classId: c.id, order: "az" }),
+                      c.name,
+                      "Active learners | Names A-Z",
+                    );
+                  }, "Class list PDF downloaded.")}
+                >
+                  Print class list (PDF)
+                </button>
                 {canManage && (
                   <div className="mt-5 space-y-3">
                     <div className="flex gap-4">

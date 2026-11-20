@@ -4,12 +4,15 @@ import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Field, Modal, Empty } from "@/components/ui";
 import { saveRows, deleteRow, updateRow } from "@/lib/api";
 import { fullName, isLeader, type Student } from "@/lib/models";
+import { filterSortStudents, type GenderFilter, type NameSort } from "@/lib/class-sheets";
 import { readStudentImport, type ImportedStudent } from "@/lib/student-import";
 import StudentProfile from "@/components/StudentProfile";
 export default function Students() {
   const { data: w, run, busy } = useWorkspace(),
     [query, setQuery] = useState(""),
     [classFilter, setClassFilter] = useState(""),
+    [genderFilter, setGenderFilter] = useState<GenderFilter>(""),
+    [nameSort, setNameSort] = useState<NameSort>("az"),
     [draft, setDraft] = useState<Partial<Student> | null>(null),
     [importOpen, setImportOpen] = useState(false),
     [preview, setPreview] = useState<ImportedStudent[]>([]),
@@ -17,13 +20,9 @@ export default function Students() {
     [reading, setReading] = useState(false),
     [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const canManage = isLeader(w.profile.role),
-    visible = w.students.filter(
-      (s) =>
-        (!classFilter || s.class_id === classFilter) &&
-        `${fullName(s)} ${s.admission_number}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    );
+    visible = filterSortStudents(w.students, {
+      query, classId: classFilter, gender: genderFilter, order: nameSort,
+    });
   const recordedLearners = new Set(
     [
       ...w.scores,
@@ -44,6 +43,18 @@ export default function Students() {
             : "View the learners in your assigned classes. Your administrator or headmaster manages enrolment."
         }
       >
+        <button
+          className="btn-secondary"
+          disabled={busy || !visible.some((s) => s.status === "ACTIVE")}
+          onClick={() => void run(async () => {
+            const { exportClassListPdf } = await import("@/lib/class-sheet-pdf");
+            const label = w.classes.find((cls) => cls.id === classFilter)?.name || "All classes";
+            const gender = genderFilter === "M" ? "Male" : genderFilter === "F" ? "Female" : "All genders";
+            exportClassListPdf(w, visible, label, `${gender} | Names ${nameSort === "az" ? "A-Z" : "Z-A"}`);
+          }, "Class list PDF downloaded.")}
+        >
+          Print class list (PDF)
+        </button>
         {canManage && (
           <div className="flex flex-wrap gap-2">
             <button
@@ -99,7 +110,30 @@ export default function Students() {
             </option>
           ))}
         </select>
+        <select
+          aria-label="Filter by gender"
+          className="field max-w-xs"
+          value={genderFilter}
+          onChange={(e) => setGenderFilter(e.target.value as GenderFilter)}
+        >
+          <option value="">Male and female</option>
+          <option value="M">Male only</option>
+          <option value="F">Female only</option>
+        </select>
+        <select
+          aria-label="Sort learners by name"
+          className="field max-w-xs"
+          value={nameSort}
+          onChange={(e) => setNameSort(e.target.value as NameSort)}
+        >
+          <option value="az">Names: A-Z</option>
+          <option value="za">Names: Z-A</option>
+        </select>
       </div>
+      <p className="text-xs text-muted">
+        Showing {visible.length} learner{visible.length === 1 ? "" : "s"}.
+        The class list PDF uses the selected filters and includes active learners only.
+      </p>
       {visible.length ? (
         <div className="surface overflow-x-auto rounded-2xl">
           <table className="data-table">
@@ -128,7 +162,7 @@ export default function Students() {
                     </td>
                     <td>{s.admission_number}</td>
                     <td>{w.classes.find((c) => c.id === s.class_id)?.name}</td>
-                    <td>{s.gender}</td>
+                    <td>{s.gender === "M" ? "Male" : "Female"}</td>
                     <td>{s.status.toLowerCase()}</td>
                     {canManage ? (
                       <td>
