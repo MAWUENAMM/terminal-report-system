@@ -78,7 +78,8 @@ export interface Student {
   guardian_name?: string;
   guardian_phone?: string;
   photo_url?: string;
-  status: "ACTIVE" | "TRANSFERRED" | "WITHDRAWN";
+  status: "ACTIVE" | "TRANSFERRED" | "WITHDRAWN" | "GRADUATED";
+  graduated_at?: string | null;
 }
 export interface Score {
   id: string;

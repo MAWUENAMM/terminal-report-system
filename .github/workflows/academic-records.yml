@@ -1,0 +1,46 @@
+name: EduReport Academic Records and Transcripts
+
+on:
+  push:
+    branches:
+      - feature/long-term-academic-records-transcripts-2026-11-20
+  pull_request:
+    paths:
+      - "src/lib/academic-records.ts"
+      - "src/lib/academic-transcript-pdf.ts"
+      - "src/components/StudentProfile.tsx"
+      - "src/app/dashboard/students/**"
+      - "src/lib/models.ts"
+      - "src/types/index.ts"
+      - "tests/academic-records.test.ts"
+      - "supabase/migrations/*long_term_student_history*"
+      - ".github/workflows/academic-records.yml"
+
+concurrency:
+  group: edu-records-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  academic-checks:
+    name: Academic history, transcript, security and application build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Run academic-record history and existing project tests
+        run: npm test
+      - name: Lint transcript, archive viewer and alumni registry
+        run: npx eslint src/lib/academic-records.ts src/lib/academic-transcript-pdf.ts src/components/StudentProfile.tsx src/app/dashboard/students/page.tsx tests/academic-records.test.ts
+      - name: Validate full application production build
+        run: npm run build
