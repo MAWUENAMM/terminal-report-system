@@ -108,13 +108,12 @@ export default function StudentProfile({ student, onClose }: Props) {
   }, [currentStudent.photo_url]);
 
   useEffect(() => {
-    if (!photoFile) {
-      setPhotoPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(photoFile);
-    setPhotoPreview(url);
-    return () => URL.revokeObjectURL(url);
+    const url = photoFile ? URL.createObjectURL(photoFile) : null;
+    const frame = window.requestAnimationFrame(() => setPhotoPreview(url));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [photoFile]);
 
   function startEditing() {
