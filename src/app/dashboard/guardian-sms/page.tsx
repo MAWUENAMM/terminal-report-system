@@ -1,10 +1,10 @@
 "use client";
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {MessageSquareText,Send,Users,RefreshCcw,ShieldCheck,FileSpreadsheet} from "lucide-react";
 import {useWorkspace} from "@/components/workspace";
 import {PageHeader} from "@/components/ui";
 import {browserClient} from "@/lib/supabase/client";
-type Guardian={student_id:string;guardian_name:string;phone_e164:string;consent_status:string;consent_source:string|null};
+type Guardian={student_id:string;guardian_name:string;phone_e164:string;consent_status:string;consent_source:string|null;contact_verified_at?:string|null};
 type Learner={id:string;admission_number:string;first_name:string;last_name:string;class_id:string;guardian:Guardian|null};
 type School={id:string;name:string};
 type Choice={id:string;name:string};
@@ -47,18 +47,17 @@ export default function GuardianSms(){
   const [sender,setSender]=useState("EDUREPORT");
   const [filter,setFilter]=useState("");
   const [edit,setEdit]=useState<string|null>(null);
+  const editSectionRef=useRef<HTMLElement|null>(null);
+  const editNameRef=useRef<HTMLInputElement|null>(null);
   const [guardianName,setGuardianName]=useState("");
   const [guardianPhone,setGuardianPhone]=useState("");
-  const [consent,setConsent]=useState<string|null>(null);
-  const [consentStatus,setConsentStatus]=useState("OPTED_IN");
-  const [consentSource,setConsentSource]=useState("");
-  const [consentConfirmed,setConsentConfirmed]=useState(false);
   const [scope,setScope]=useState("selected");
   const [selected,setSelected]=useState<string[]>([]);
   const [classId,setClassId]=useState("");
   const [message,setMessage]=useState("");
   const [preview,setPreview]=useState<Preview|null>(null);
-  const [saved,setSaved]=useState<string|null>(null);
+  const sendKeyRef=useRef<string|null>(null);
+  const [sendSummary,setSendSummary]=useState("");
   const [history,setHistory]=useState<Campaign[]>([]);
   const [sendingConfirm,setSendingConfirm]=useState(false);
   const [customTest,setCustomTest]=useState<CustomTestState|null>(null);
@@ -128,13 +127,22 @@ export default function GuardianSms(){
       await reloadCustomTest();setCustomTestBusy(false);
     }
   }
+  useEffect(()=>{
+    if(!edit)return;
+    const frame=window.requestAnimationFrame(()=>{
+      editSectionRef.current?.scrollIntoView({behavior:"smooth",block:"center"});
+      editNameRef.current?.focus({preventScroll:true});
+    });
+    return ()=>window.cancelAnimationFrame(frame);
+  },[edit]);
   const visible=useMemo(()=>learners.filter(l=>
     [l.first_name,l.last_name,l.admission_number,l.guardian?.guardian_name||""]
       .join(" ").toLowerCase().includes(filter.toLowerCase())
   ),[learners,filter]);
   const enrolled=learners.length;
-  const opted=learners.filter(x=>x.guardian?.consent_status==="OPTED_IN").length;
-  const clear=()=>{setPreview(null);setSaved(null);};
+  const opted=learners.filter(x=>x.guardian?.consent_status!=="OPTED_OUT"&&
+    (x.guardian?.contact_verified_at||x.guardian?.consent_status==="OPTED_IN")).length;
+  const clear=()=>{setPreview(null);setSendSummary("");sendKeyRef.current=null;};
   async function act(task:()=>Promise<string>){
     setBusy(true);setError("");setNotice("");
     try{setNotice(await task());await refresh();}
@@ -144,9 +152,37 @@ export default function GuardianSms(){
   const audience=()=>scope==="all"?{scope}:scope==="class"?{scope,class_id:classId}:{scope,selected_ids:selected};
   async function showPreview(){
     setBusy(true);setError("");setNotice("");
-    try{setPreview(await call("preview",{...audience(),message,sender_id:sender}));setSaved(null);}
+    try{
+      setPreview(await call("preview",{...audience(),message,sender_id:sender}));
+      setSendSummary("");
+      if(!sendKeyRef.current)sendKeyRef.current=crypto.randomUUID();
+    }
     catch(e){setError(e instanceof Error?e.message:"Preview failed");}
     finally{setBusy(false);}
+  }
+  async function sendGuardianMessage(){
+    if(busy||!preview||preview.can_send!==true)return;
+    setSendingConfirm(false);setBusy(true);setError("");setNotice("");
+    const requestKey=sendKeyRef.current||crypto.randomUUID();
+    sendKeyRef.current=requestKey;
+    try{
+      let result=await call("send_now",{...audience(),message,sender_id:sender,request_key:requestKey});
+      const campaign=String(result.campaign_id||"");
+      if(!campaign)throw Error("Sending result could not be verified.");
+      let batches=0;
+      while(Number(result.remaining||0)>0&&batches<49){
+        result=await call("send",{campaign_id:campaign});
+        batches++;
+      }
+      const note=Number(result.remaining||0)>0?
+        "Some messages are still queued. Check Message History.":
+        "SMS processed. Check Message History for provider acceptance and delivery.";
+      setSendSummary(note);setNotice(note);setPreview(null);sendKeyRef.current=null;
+      await refresh();
+    }catch(e){
+      setError((e instanceof Error?e.message:"SMS status uncertain")+
+        " Check Message History first; do not resend until you know the outcome.");
+    }finally{setBusy(false);}
   }
   async function importFile(file:File){
     try{
@@ -158,7 +194,7 @@ export default function GuardianSms(){
           const result=await call("import_contacts",{rows:rows.slice(i,i+200)});
           total+=Number(result.imported||0);
         }
-        clear();return String(total)+" guardian contacts imported. Consent is not automatically granted.";
+        clear();return String(total)+" guardian contacts imported. Existing stop-SMS preferences are respected.";
       });
     }catch(e){setError(e instanceof Error?e.message:"Cannot read CSV");}
   }
@@ -168,7 +204,7 @@ export default function GuardianSms(){
   </section>;
   return <div className="space-y-6">
     <PageHeader eyebrow="School communication" title="Parent/Guardian SMS"
-      description="Manage school contacts and consent, preview messages and create controlled SMS campaigns.">
+      description="Add verified school contacts and send an SMS to one parent, a class or the whole school.">
       <button className="btn-secondary" disabled={busy} onClick={()=>void refresh()}><RefreshCcw size={16}/>Refresh</button>
     </PageHeader>
     {testing&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -188,7 +224,7 @@ export default function GuardianSms(){
     </section>}
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="surface rounded-xl p-4"><Users className="text-emerald-700" size={20}/><p className="text-xs text-muted">Active learners</p><strong className="text-2xl">{enrolled}</strong></div>
-      <div className="surface rounded-xl p-4"><ShieldCheck className="text-emerald-700" size={20}/><p className="text-xs text-muted">{testing?"Learners with synthetic test opt-in":"Learners with guardian consent"}</p><strong className="text-2xl">{opted}</strong></div>
+      <div className="surface rounded-xl p-4"><ShieldCheck className="text-emerald-700" size={20}/><p className="text-xs text-muted">{testing?"Demo contacts available":"Verified school contacts"}</p><strong className="text-2xl">{opted}</strong></div>
       <div className="surface rounded-xl p-4"><MessageSquareText className="text-emerald-700" size={20}/><p className="text-xs text-muted">School Sender ID</p><strong>{senderOptions.join(" / ")}</strong></div>
     </div>
     {testing&&w.operator&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
@@ -249,7 +285,7 @@ export default function GuardianSms(){
     </section>}
     <section className="surface rounded-2xl p-5">
       <h2 className="text-lg font-bold">Guardian contact book</h2>
-      <p className="mt-1 text-sm text-muted">Match numbers to existing admission numbers. Imports are pending until actual guardian permission is recorded.</p>
+      <p className="mt-1 text-sm text-muted">Use parent numbers recorded by the school. Send school-related notices only, and respect requests to stop SMS.</p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <label className="btn-secondary cursor-pointer"><FileSpreadsheet size={16}/>Import CSV
           <input type="file" accept=".csv" className="sr-only" disabled={busy} onChange={e=>{
@@ -259,25 +295,31 @@ export default function GuardianSms(){
         <a className="text-sm font-semibold text-emerald-700 underline"
           href={"data:text/csv;charset=utf-8,"+encodeURIComponent("admission_number,guardian_name,phone\nADM001,Guardian Example,0241234567\n")}
           download="guardian_sms_import_sample.csv">Download CSV template</a>
-        <span className="text-xs text-muted">Do not upload real parent contacts into staging.</span>
+        {testing&&<span className="text-xs text-muted">Do not upload real parent contacts into staging.</span>}
       </div>
       <input className="field mt-4 max-w-md" placeholder="Search learner or admission number"
         aria-label="Search guardian contacts" value={filter} onChange={e=>setFilter(e.target.value)}/>
       <div className="mt-3 max-h-[420px] overflow-auto rounded-xl border">
         <table className="data-table">
-          <thead><tr><th>Learner</th><th>Guardian</th><th>Phone</th><th>Consent</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Learner</th><th>Guardian</th><th>Phone</th><th>SMS status</th><th>Actions</th></tr></thead>
           <tbody>{visible.slice(0,500).map(l=><tr key={l.id}>
             <td><strong>{l.first_name} {l.last_name}</strong><span className="block text-xs">{l.admission_number}</span></td>
             <td>{l.guardian?.guardian_name||"—"}{testing&&l.guardian?.guardian_name?.startsWith("STAGING DEMO")&&<span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900">Synthetic</span>}</td>
             <td className="font-mono text-xs">{l.guardian?.phone_e164||"Missing"}</td>
-            <td>{l.guardian?.consent_status||"PENDING"}</td>
+            <td>{l.guardian?.consent_status==="OPTED_OUT"?"SMS stopped":l.guardian?.contact_verified_at||l.guardian?.consent_status==="OPTED_IN"?"Available":"Not verified"}</td>
             <td>
               <button className="mr-3 text-sm font-semibold text-emerald-700" onClick={()=>{
                 setEdit(l.id);setGuardianName(l.guardian?.guardian_name||"");setGuardianPhone(l.guardian?.phone_e164||"");
+                window.requestAnimationFrame(()=>editSectionRef.current?.scrollIntoView({behavior:"smooth",block:"center"}));
               }}>Edit</button>
-              {l.guardian&&<button className="text-sm font-semibold text-emerald-700" onClick={()=>{
-                setConsent(l.id);setConsentSource("");setConsentConfirmed(false);
-              }}>Consent</button>}
+              {l.guardian&&<button className="text-sm font-semibold text-slate-700"
+                disabled={busy} onClick={()=>void act(async()=>{
+                  const blocked=l.guardian?.consent_status!=="OPTED_OUT";
+                  if(!blocked&&!window.confirm("Has the guardian asked the school to resume SMS notices to this number?"))return "";
+                  await call("set_sms_preference",{student_id:l.id,blocked});
+                  clear();
+                  return blocked?"SMS stopped for this contact.":"School notices restored for this contact.";
+                })}>{l.guardian.consent_status==="OPTED_OUT"?"Allow SMS":"Stop SMS"}</button>}
             </td>
           </tr>)}</tbody>
         </table>
@@ -285,49 +327,19 @@ export default function GuardianSms(){
       </div>
       {visible.length>500&&<p className="text-xs text-amber-800">Showing 500 rows. Use search for others.</p>}
     </section>
-    {edit&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
-      <h3 className="font-bold">Update guardian contact</h3>
+    {edit&&<section ref={editSectionRef} className="surface scroll-mt-24 rounded-2xl border-2 border-emerald-200 p-5">
+      <h3 className="font-bold">Edit guardian contact for {learners.find(l=>l.id===edit)?.first_name} {learners.find(l=>l.id===edit)?.last_name}</h3>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Guardian name<input className="field mt-1" value={guardianName} onChange={e=>setGuardianName(e.target.value)} maxLength={120}/></label>
+        <label className="text-sm">Guardian name<input ref={editNameRef} className="field mt-1" value={guardianName} onChange={e=>setGuardianName(e.target.value)} maxLength={120}/></label>
         <label className="text-sm">Ghana phone<input className="field mt-1" type="tel" value={guardianPhone} onChange={e=>setGuardianPhone(e.target.value)}/></label>
       </div>
-      <p className="mt-2 text-xs text-muted">Changing the phone number resets SMS consent.</p>
+      <p className="mt-2 text-xs text-muted">Check against the school register. SMS opt-outs remain blocked for the same phone.</p>
       <div className="mt-3 flex gap-2">
         <button className="btn-primary" disabled={busy} onClick={()=>void act(async()=>{
           await call("save_contact",{student_id:edit,guardian_name:guardianName,phone:guardianPhone});
-          setEdit(null);clear();return "Contact saved. Confirm guardian SMS consent separately.";
+          setEdit(null);clear();return "Parent/guardian contact saved.";
         })}>Save</button>
         <button className="btn-secondary" onClick={()=>setEdit(null)}>Cancel</button>
-      </div>
-    </section>}
-    {consent&&<section className="surface rounded-2xl border-2 border-emerald-200 p-5">
-      <h3 className="font-bold">Record guardian SMS permission</h3>
-      <p className="mt-1 text-sm text-muted">Only record genuine permission provided by the guardian. A stored phone number alone is not permission.</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Preference
-          <select className="field mt-1" value={consentStatus} onChange={e=>setConsentStatus(e.target.value)}>
-            <option value="OPTED_IN">Guardian agreed to SMS</option>
-            <option value="OPTED_OUT">Guardian declined / withdrew SMS</option>
-          </select>
-        </label>
-        <label className="text-sm">Evidence of preference
-          <select className="field mt-1" value={consentSource} onChange={e=>setConsentSource(e.target.value)}>
-            <option value="">Select evidence</option>
-            <option value="Written guardian permission held by school">Written permission held by school</option>
-            <option value="Guardian gave permission by telephone">Confirmed by telephone</option>
-            <option value="Guardian gave permission at school">Confirmed in person</option>
-            <option value="Guardian requested to stop SMS communication">Guardian requested opt-out</option>
-          </select>
-        </label>
-      </div>
-      <label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={consentConfirmed} onChange={e=>setConsentConfirmed(e.target.checked)}/>
-        I confirm that this accurately records the guardian&apos;s choice.</label>
-      <div className="mt-3 flex gap-2">
-        <button className="btn-primary" disabled={busy||!consentConfirmed||!consentSource} onClick={()=>void act(async()=>{
-          await call("record_consent",{student_id:consent,consent_action:consentStatus,consent_source:consentSource});
-          setConsent(null);clear();return "Guardian SMS preference recorded.";
-        })}>Save permission</button>
-        <button className="btn-secondary" onClick={()=>setConsent(null)}>Cancel</button>
       </div>
     </section>}
     <section className="surface rounded-2xl p-5">
@@ -359,31 +371,26 @@ export default function GuardianSms(){
       </label>
       <p className="mt-1 text-xs text-muted">{message.length} / 320 characters. Provider rates and segments may vary.</p>
       <div className="mt-3 flex flex-wrap gap-3">
-        <button className="btn-secondary" disabled={busy||!message.trim()} onClick={()=>void showPreview()}>Preview recipients and credits</button>
-        <button className="btn-primary" disabled={busy||!preview||preview.eligible_guardians===0||!!saved}
-          onClick={()=>void act(async()=>{
-            const result=await call("draft",{...audience(),message,sender_id:sender,request_key:crypto.randomUUID()});
-            setSaved(String(result.id));return "Draft saved. No SMS has been sent.";
-          })}>Save SMS draft</button>
+        <button className="btn-secondary" disabled={busy||!message.trim()} onClick={()=>void showPreview()}>
+          Check recipients and cost
+        </button>
+        <button className="btn-primary" disabled={busy||!preview||preview.eligible_guardians===0||preview.can_send!==true}
+          onClick={()=>setSendingConfirm(true)}><Send size={16}/> Send SMS now</button>
       </div>
       {preview&&<div className="mt-4 rounded-xl border bg-slate-50 p-4 text-sm">
-        <h3 className="font-bold">Review before sending</h3>
+        <h3 className="font-bold">Ready to send</h3>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <span>{preview.selected_learners} learners selected</span>
-          <span>{preview.eligible_guardians} unique eligible guardians</span>
-          <span>{preview.estimated_credits} estimated credits</span>
-          <span>{preview.missing} missing phone records</span>
-          <span>{preview.consent_needed} without SMS consent</span>
-          <span>{preview.duplicates} duplicate phones removed</span>
+          <span>{preview.eligible_guardians} unique guardian phones</span>
+          <span>{preview.estimated_credits} estimated SMS credits</span>
+          <span>{preview.missing} missing contacts</span>
+          <span>{preview.consent_needed} unavailable or blocked</span>
+          <span>{preview.duplicates} duplicate numbers removed</span>
         </div>
         <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white p-3">{preview.message_preview}</p>
+        {preview.can_send!==true&&<p className="mt-2 text-xs text-amber-800">Paid sending is currently disabled for this school or environment.</p>}
       </div>}
-      {saved&&<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-        <strong>Draft saved.</strong> Campaign ID: <span className="font-mono text-xs">{saved}</span>
-        <button className="btn-primary mt-3 block" disabled={busy||testing||preview?.can_send!==true} onClick={()=>setSendingConfirm(true)}>
-          Send saved campaign</button>
-        {(testing||preview?.can_send!==true)&&<p className="mt-1 text-xs text-amber-800">{testing?"Staging sending is disabled. Draft preview only.":"Parent messaging is available for drafts. Paid sending is not activated until the sender and consent rollout is verified."}</p>}
-      </div>}
+      {sendSummary&&<p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm">{sendSummary}</p>}
     </section>
     <section className="surface rounded-2xl p-5">
       <h2 className="text-lg font-bold">Message history</h2>
@@ -395,19 +402,18 @@ export default function GuardianSms(){
         <td className="max-w-xs truncate">{c.message_body}</td>
       </tr>)}</tbody></table>{!history.length&&<p className="p-3 text-sm text-muted">No custom messages yet.</p>}</div>
     </section>
-    {sendingConfirm&&<div role="dialog" aria-modal="true" aria-label="Confirm SMS send"
+    {sendingConfirm&&<div role="dialog" aria-modal="true" aria-label="Confirm guardian SMS"
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h3 className="font-bold">Confirm paid guardian SMS</h3>
-        <p className="mt-2 text-sm">Send to {preview?.eligible_guardians||0} unique guardians? Approximately {preview?.estimated_credits||0} SMS credits may be required.</p>
-        <p className="mt-2 text-sm text-amber-800">Confirm only once. Do not retry an uncertain provider response.</p>
+        <h3 className="text-lg font-bold">Send SMS now?</h3>
+        <p className="mt-2 text-sm">Send as <strong>{sender}</strong> to <strong>{preview?.eligible_guardians||0}</strong> guardian phone(s)?
+          Estimated cost: <strong>{preview?.estimated_credits||0} SMS credits</strong>.</p>
+        <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{message}</p>
+        <p className="mt-2 text-xs text-muted">Only school-related notices. Uncertain Arkesel submissions are never retried automatically.</p>
         <div className="mt-4 flex justify-end gap-3">
-          <button className="btn-secondary" onClick={()=>setSendingConfirm(false)}>Cancel</button>
-          <button className="btn-primary" disabled={busy||testing} onClick={()=>void act(async()=>{
-            setSendingConfirm(false);
-            const result=await call("send",{campaign_id:saved});
-            return String(result.message||"Campaign request completed");
-          })}>Confirm send</button>
+          <button className="btn-secondary" disabled={busy} onClick={()=>setSendingConfirm(false)}>Cancel</button>
+          <button className="btn-primary" disabled={busy||testing||preview?.can_send!==true}
+            onClick={()=>void sendGuardianMessage()}>Confirm &amp; send</button>
         </div>
       </div>
     </div>}

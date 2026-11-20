@@ -168,7 +168,32 @@ begin
       'EDUREPORT','Phone-wide opt out should block siblings',1,
       array['c1300000-0000-4000-8000-000000000001'::uuid]);
   exception when others then
-    blocked:=sqlerrm like '%No opted-in guardians%'; end;
+    blocked:=sqlerrm like '%No school-authorized guardian contacts%'; end;
   perform pg_temp.guardian_expect(blocked,'One linked opt-out blocks same guardian phone');
+  -- School-verified contacts receive ordinary school notices without falsely
+  -- recording explicit opt-in; an opt-out still wins.
+  update public.guardian_sms_contacts
+     set contact_verified_at=now(),contact_verified_by=operator_a,
+         contact_source='SCHOOL_ADMIN_RECORD'
+   where student_id='c1300000-0000-4000-8000-000000000004';
+  result:=public.guardian_sms_prepare_draft(a,gen_random_uuid(),operator_a,
+    'EDUREPORT','School operational announcement',1,
+    array['c1300000-0000-4000-8000-000000000004'::uuid]);
+  perform pg_temp.guardian_expect((result->>'recipient_count')::int=1,
+    'Verified contact is eligible without inferred explicit consent');
+  update public.guardian_sms_contacts
+     set consent_status='OPTED_OUT',consent_source='School request to stop SMS',
+         consent_recorded_at=now(),consent_recorded_by=operator_a
+   where student_id='c1300000-0000-4000-8000-000000000004';
+  blocked:=false;
+  begin
+    perform public.guardian_sms_prepare_draft(a,gen_random_uuid(),operator_a,
+      'EDUREPORT','Blocked school announcement',1,
+      array['c1300000-0000-4000-8000-000000000004'::uuid]);
+  exception when others then blocked:=true; end;
+  perform pg_temp.guardian_expect(blocked,'Verified number with opt-out must remain excluded');
+  perform pg_temp.guardian_expect(
+    (select enabled=false from public.guardian_sms_release_settings where singleton=true),
+    'Bulk paid SMS release defaults to disabled');
 end $test$;
 rollback;

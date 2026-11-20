@@ -8,8 +8,8 @@ const url=(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
 const anon=Deno.env.get("SUPABASE_ANON_KEY")||"";
 const serviceRole=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
 const providerKey=Deno.env.get("ARKESEL_API_KEY")||"";
-const sendingAllowed=Deno.env.get("GUARDIAN_SMS_LIVE_ENABLED")==="true";
 const isStaging=url==="https://ymoyqresvsxetvnkwsxq.supabase.co";
+const sendingAllowed=!isStaging&&Deno.env.get("GUARDIAN_SMS_LIVE_ENABLED")!=="false";
 const originAllowed=(origin:string)=>
   /^https:\/\/terminal-report-system(?:-[a-z0-9-]+-mawuenam)?\.vercel\.app$/.test(origin)
   || origin==="http://localhost:3000";
@@ -44,14 +44,14 @@ function segments(body:string){
   return Math.ceil(total/(total<=70?70:67));
 }
 type Student={id:string;school_id:string;class_id:string;admission_number:string;first_name:string;last_name:string;status:string};
-type Guardian={student_id:string;school_id:string;guardian_name:string;phone_e164:string;consent_status:string;consent_source:string|null;consent_recorded_at:string|null};
+type Guardian={student_id:string;school_id:string;guardian_name:string;phone_e164:string;consent_status:string;consent_source:string|null;consent_recorded_at:string|null;contact_verified_at:string|null};
 type Campaign={id:string;school_id:string;sender_id:string;message_body:string;status:string;created_by:string;recipient_count:number;segment_estimate:number};
 type Payload={
   action?:string;school_id?:string;student_id?:string;admission_number?:string;
   guardian_name?:string;phone?:string;consent_action?:"OPTED_IN"|"OPTED_OUT";consent_source?:string;
   rows?:{admission_number:string;guardian_name:string;phone:string}[];
   scope?:"selected"|"class"|"all";selected_ids?:string[];class_id?:string;
-  message?:string;sender_id?:string;request_key?:string;campaign_id?:string;
+  message?:string;sender_id?:string;request_key?:string;campaign_id?:string;blocked?:boolean;
   test_request_id?:string;test_confirmed?:boolean;
 };
 
@@ -229,6 +229,10 @@ Deno.serve(async(request:Request)=>{
   const senderIsAllowed=(chosen:string)=>
     senderOptions.includes(chosen)&&
     (chosen!=="Ark Academy"||school.name==="THE ARK ACADEMY");
+  const {data:liveControl,error:liveControlError}=await db
+    .from("guardian_sms_release_settings").select("enabled").eq("singleton",true).maybeSingle();
+  const releaseEnabled=!liveControlError&&liveControl?.enabled===true;
+
 
   const getStudents=async()=>{
     const result:Student[]=[];
@@ -246,7 +250,7 @@ Deno.serve(async(request:Request)=>{
     const result:Guardian[]=[];
     for(let start=0;start<10000;start+=1000){
       const {data:contacts,error}=await db.from("guardian_sms_contacts")
-        .select("student_id,school_id,guardian_name,phone_e164,consent_status,consent_source,consent_recorded_at")
+        .select("student_id,school_id,guardian_name,phone_e164,consent_status,consent_source,consent_recorded_at,contact_verified_at")
         .eq("school_id",schoolId).order("student_id").range(start,start+999);
       if(error)throw Error("Cannot load guardian contacts");
       result.push(...(contacts as Guardian[]||[]));
@@ -280,7 +284,7 @@ Deno.serve(async(request:Request)=>{
     for(const s of students){
       const contact=byId.get(s.id);
       if(!contact){reasons.missing++;continue;}
-      if(contact.consent_status!=="OPTED_IN"||!contact.consent_recorded_at||blockedPhones.has(contact.phone_e164)){
+      if(contact.consent_status==="OPTED_OUT"||(!contact.contact_verified_at&&!(contact.consent_status==="OPTED_IN"&&contact.consent_recorded_at))||blockedPhones.has(contact.phone_e164)){
         reasons.consent_needed++;continue;
       }
       if(phones.has(contact.phone_e164)){reasons.duplicates++;continue;}
@@ -317,12 +321,22 @@ Deno.serve(async(request:Request)=>{
       const {data:learner}=await db.from("students").select("id").eq("id",data.student_id)
         .eq("school_id",schoolId).eq("status","ACTIVE").maybeSingle();
       if(!learner)throw Error("Learner not active in this school");
+      const {data:existing,error:readError}=await db.from("guardian_sms_contacts")
+        .select("phone_e164,consent_status,consent_source,consent_recorded_at,consent_recorded_by")
+        .eq("student_id",learner.id).eq("school_id",schoolId).maybeSingle();
+      if(readError)throw Error("Cannot verify existing guardian messaging preference");
+      const samePhone=existing?.phone_e164===phone;
       const {error}=await db.from("guardian_sms_contacts").upsert({
         student_id:learner.id,school_id:schoolId,guardian_name:name,phone_e164:phone,
-        updated_by:actor,
+        consent_status:samePhone&&existing?existing.consent_status:"PENDING",
+        consent_source:samePhone&&existing?existing.consent_source:null,
+        consent_recorded_at:samePhone&&existing?existing.consent_recorded_at:null,
+        consent_recorded_by:samePhone&&existing?existing.consent_recorded_by:null,
+        contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
+        contact_source:"SCHOOL_ADMIN_RECORD",updated_by:actor,
       },{onConflict:"student_id"});
       if(error)throw Error("Guardian contact could not be saved");
-      return reply(origin,200,{saved:1,message:"Contact saved. Consent is required before messaging."});
+      return reply(origin,200,{saved:1,message:"School contact saved and verified for operational notices."});
     }
     if(action==="import_contacts"){
       const rows=data.rows;
@@ -332,6 +346,11 @@ Deno.serve(async(request:Request)=>{
       const map=new Map(students.filter(s=>s.status==="ACTIVE")
         .map(s=>[s.admission_number.trim().toLowerCase(),s]));
       const used=new Set<string>(),items=[];
+      const {data:existingContacts,error:readError}=await db.from("guardian_sms_contacts")
+        .select("student_id,phone_e164,consent_status,consent_source,consent_recorded_at,consent_recorded_by")
+        .eq("school_id",schoolId);
+      if(readError)throw Error("Cannot verify existing SMS opt-outs");
+      const current=new Map((existingContacts||[]).map(x=>[x.student_id,x]));
       for(const row of rows){
         const key=String(row.admission_number||"").trim().toLowerCase();
         const name=String(row.guardian_name||"").trim();
@@ -340,35 +359,40 @@ Deno.serve(async(request:Request)=>{
         if(!learner||used.has(key)||!phone||name.length<2||name.length>120)
           throw Error("Invalid or duplicate admission number, guardian or phone. Correct the CSV before import.");
         used.add(key);
+        const prior=current.get(learner.id);
+        const unchanged=prior?.phone_e164===phone;
         items.push({
           student_id:learner.id,school_id:schoolId,guardian_name:name,
-          phone_e164:phone,consent_status:"PENDING",
-          consent_source:null,consent_recorded_at:null,consent_recorded_by:null,
-          updated_by:actor,
+          phone_e164:phone,
+          consent_status:unchanged&&prior?prior.consent_status:"PENDING",
+          consent_source:unchanged&&prior?prior.consent_source:null,
+          consent_recorded_at:unchanged&&prior?prior.consent_recorded_at:null,
+          consent_recorded_by:unchanged&&prior?prior.consent_recorded_by:null,
+          contact_verified_at:new Date().toISOString(),contact_verified_by:actor,
+          contact_source:"SCHOOL_ADMIN_CSV_IMPORT",updated_by:actor,
         });
       }
       const {error}=await db.from("guardian_sms_contacts")
         .upsert(items,{onConflict:"student_id"});
       if(error)throw Error("Contact import failed; verify the file and try again");
       return reply(origin,200,{
-        imported:items.length,message:"Contacts imported. None was automatically opted into SMS.",
+        imported:items.length,message:"School contacts imported; opt-out preferences have been preserved.",
       });
     }
-    if(action==="record_consent"){
-      if(!uuid(data.student_id)||!["OPTED_IN","OPTED_OUT"].includes(String(data.consent_action)))
-        throw Error("Choose a valid guardian and consent action");
-      const source=String(data.consent_source||"").trim();
-      if(source.length<12||source.length>300)
-        throw Error("Record how the guardian granted or withdrew consent");
+    if(action==="set_sms_preference"){
+      if(!uuid(data.student_id)||typeof data.blocked!=="boolean")
+        throw Error("Select a guardian and message preference");
       const {data:changed,error}=await db.from("guardian_sms_contacts")
         .update({
-          consent_status:data.consent_action,consent_source:source,
-          consent_recorded_at:new Date().toISOString(),
-          consent_recorded_by:actor,updated_by:actor,
+          consent_status:data.blocked?"OPTED_OUT":"PENDING",
+          consent_source:data.blocked?"School record: stop SMS to this number":null,
+          consent_recorded_at:data.blocked?new Date().toISOString():null,
+          consent_recorded_by:data.blocked?actor:null,
+          updated_by:actor,
         }).eq("student_id",data.student_id).eq("school_id",schoolId)
         .select("student_id").maybeSingle();
-      if(error||!changed)throw Error("Contact is not registered in the selected school");
-      return reply(origin,200,{saved:true,message:"Consent preference recorded with an audit timestamp."});
+      if(error||!changed)throw Error("Guardian contact is not registered for this school");
+      return reply(origin,200,{saved:true,message:data.blocked?"SMS blocked for this guardian":"School notices restored"});
     }
     if(action==="preview"||action==="draft"){
       const [students,contacts]=await Promise.all([getStudents(),getContacts()]);
@@ -388,9 +412,9 @@ Deno.serve(async(request:Request)=>{
         school_id:schoolId,sender_id:sender,...counts,
         segments:parts,estimated_credits:estimatedCredits,
         message_preview:message,
-        can_send:!isStaging&&sendingAllowed&&!!providerKey,
+        can_send:releaseEnabled&&sendingAllowed&&!!providerKey,
       });
-      if(counts.eligible_guardians===0)throw Error("No opted-in guardians in this selection");
+      if(counts.eligible_guardians===0)throw Error("No verified, unblocked guardian contacts in this selection");
       if(!uuid(data.request_key))throw Error("An idempotent draft request ID is required");
       const {data:draft,error}=await db.rpc("guardian_sms_prepare_draft",{
         p_school_id:schoolId,p_request_key:data.request_key,p_actor:actor,
@@ -401,6 +425,29 @@ Deno.serve(async(request:Request)=>{
       return reply(origin,200,{...draft,estimated_credits:estimatedCredits,
         message:"Draft saved; no SMS has been sent."});
     }
+    if(action==="send_now"){
+      if(!releaseEnabled||!sendingAllowed||!providerKey)
+        return reply(origin,409,{error:"School SMS sending is not yet enabled for this environment."});
+      const [students,contacts]=await Promise.all([getStudents(),getContacts()]);
+      const selected=chooseStudents(students);
+      const eligible=summary(selected,contacts);
+      const text=String(data.message||"").trim();
+      const sender=String(data.sender_id||schoolSender);
+      if(!senderIsAllowed(sender)||text.length<1||text.length>320||
+        /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text))
+        throw Error("Invalid school message or Sender ID");
+      if(eligible.eligible_guardians<1)throw Error("No verified, unblocked guardians in this selection");
+      if(!uuid(data.request_key))throw Error("Missing unique SMS request ID");
+      const parts=segments(text);
+      if(parts>6)throw Error("Message exceeds SMS segment allowance");
+      const {data:draft,error:draftError}=await db.rpc("guardian_sms_prepare_draft",{
+        p_school_id:schoolId,p_request_key:data.request_key,p_actor:actor,
+        p_sender_id:sender,p_message:text,p_segment_estimate:parts,
+        p_student_ids:selected.map(s=>s.id),
+      });
+      if(draftError||!draft?.id)throw Error(draftError?.message||"Cannot prepare school message");
+      data.campaign_id=String(draft.id);
+    }
     if(action==="campaigns"){
       const {data:campaigns,error}=await db.from("guardian_sms_campaigns")
         .select("id,school_id,sender_id,message_body,status,recipient_count,segment_estimate,created_at,confirmed_at")
@@ -408,9 +455,8 @@ Deno.serve(async(request:Request)=>{
       if(error)throw Error("Campaign history unavailable");
       return reply(origin,200,{campaigns:campaigns||[]});
     }
-    if(action==="send"){
-      // Separate explicit production authorization required to set this secret.
-      if(isStaging||!sendingAllowed||!providerKey)
+    if(action==="send"||action==="send_now"){
+      if(!releaseEnabled||!sendingAllowed||!providerKey)
         return reply(origin,409,{error:"Guardian SMS sending is disabled in staging or awaiting release approval."});
       if(!uuid(data.campaign_id))throw Error("Choose a saved campaign draft");
       const {data:campaign,error:campaignError}=await db.from("guardian_sms_campaigns")
@@ -429,7 +475,7 @@ Deno.serve(async(request:Request)=>{
       if(permitError)throw Error(permitError.message||"Campaign could not be authorized");
       if(authorization?.duplicate&&authorization?.status!=="QUEUED"&&
          authorization?.status!=="PROCESSING")
-        return reply(origin,200,{mode:"ALREADY_PROCESSED",...authorization});
+        return reply(origin,200,{mode:"ALREADY_PROCESSED",campaign_id:c.id,remaining:0,...authorization});
       const {data:claimed,error:claimError}=await db.rpc("guardian_sms_claim_batch",{
         p_campaign_id:c.id,p_max:10,
       });
@@ -437,11 +483,12 @@ Deno.serve(async(request:Request)=>{
       let submitted=0,failed=0,unknown=0;
       for(const item of claimed||[]){
         const {data:nowConsented,error:consentError}=await db.from("guardian_sms_contacts")
-          .select("student_id,phone_e164,consent_status,consent_recorded_at")
+          .select("student_id,phone_e164,consent_status,consent_recorded_at,contact_verified_at")
           .eq("school_id",schoolId).eq("phone_e164",item.phone_e164);
         const consentValid=!consentError&&Array.isArray(nowConsented)&&
           !nowConsented.some(x=>x.consent_status==="OPTED_OUT") && nowConsented.some(
-            (x)=>item.student_ids.includes(x.student_id)&&x.consent_status==="OPTED_IN"&&!!x.consent_recorded_at
+            (x)=>item.student_ids.includes(x.student_id)&&x.consent_status!=="OPTED_OUT"&&
+              (x.contact_verified_at||x.consent_status==="OPTED_IN"&&!!x.consent_recorded_at)
           );
         let status="UNKNOWN",providerId:string|null=null,credits=0,verified=false;
         let lastError:string|null="Provider response uncertain. Do not retry.";
@@ -488,7 +535,7 @@ Deno.serve(async(request:Request)=>{
       }
       return reply(origin,200,{
         mode:left?"BATCH_SUBMITTED":"CAMPAIGN_FINISHED",
-        submitted,failed,unknown,remaining:left,
+        campaign_id:c.id,submitted,failed,unknown,remaining:left,
         message:left?"Batch submitted. Confirm remaining batches only after checking provider records.":
           "Campaign processing completed. SUBMITTED is provider acceptance, not handset delivery.",
       });
