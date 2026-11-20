@@ -41,14 +41,13 @@ export function reportData(snapshot: ReportSnapshot): {
   const average = x.scores.length
     ? x.scores.reduce((sum, s) => sum + Number(s.total), 0) / x.scores.length
     : 0;
-  const averages = x.class_students.map((student) => {
+  // Unscored learners must not be ranked as if they received zero.
+  // Rank on the same one-decimal averages printed on the class sheets.
+  const averages = x.class_students.flatMap((student) => {
     const scores = x.class_scores.filter((sc) => sc.student_id === student.id);
-    return {
-      studentId: student.id,
-      total: scores.length
-        ? scores.reduce((n, sc) => n + Number(sc.total), 0) / scores.length
-        : 0,
-    };
+    if (!scores.length) return [];
+    const mean = scores.reduce((n, sc) => n + Number(sc.total), 0) / scores.length;
+    return [{ studentId: student.id, total: Math.round(mean * 10) / 10 }];
   });
   const positions = computePositions(averages);
   const subjects = x.subjects.map((s) => ({
