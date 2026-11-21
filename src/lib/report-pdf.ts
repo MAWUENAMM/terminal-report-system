@@ -108,19 +108,17 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     return size;
   };
 
+  // Paint the logo over the finished page at low opacity so opaque table cells
+  // cannot hide it. Enlarged and light enough to retain text readability.
   const addWatermark = () => {
     if (!school.logoUrl?.startsWith("data:image")) return;
     try {
       doc.saveGraphicsState();
-      doc.setGState(new GState({ opacity: 0.035 }));
-      doc.addImage(school.logoUrl, "PNG", pageWidth / 2 - 48, 92, 96, 96);
+      doc.setGState(new GState({ opacity: 0.135 }));
+      doc.addImage(school.logoUrl, "PNG", pageWidth / 2 - 57, 91, 114, 114);
       doc.restoreGraphicsState();
     } catch {
-      try {
-        doc.restoreGraphicsState();
-      } catch {
-        /* graphics state was not pushed */
-      }
+      try { doc.restoreGraphicsState(); } catch { /* graphics state was not pushed */ }
     }
   };
 
@@ -136,7 +134,6 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     doc.addPage();
     y = 12;
     drawPageFrame();
-    addWatermark();
   };
 
   const labelValue = (
@@ -146,13 +143,12 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     top: number,
     width: number,
   ) => {
-    text(label.toUpperCase(), x, top, 5.2, "bold", MUTED);
+    text(label.toUpperCase(), x, top, 6.7, "bold", MUTED);
     const display = value || "—";
-    text(display, x, top + 4.2, fit(display, width, 7.4, 5.8), "bold", NAVY);
+    text(display, x, top + 4.8, fit(display, width, 8.8, 6.9), "bold", NAVY);
   };
 
   drawPageFrame();
-  addWatermark();
 
   // Institutional header inspired by Ghanaian school report cards, but kept modern and compact.
   outlineRect(margin, y, contentWidth, 31, NAVY, 2.5);
@@ -184,7 +180,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     schoolName,
     headerCenter,
     y + 9,
-    fit(schoolName, headerTextWidth, 15, 9.2),
+    fit(schoolName, headerTextWidth, 16.4, 10),
     "bold",
     GREEN,
     { align: "center" },
@@ -193,16 +189,16 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     .filter(Boolean)
     .join(" · ");
   if (location)
-    text(location, headerCenter, y + 15.5, 6.4, "normal", NAVY, { align: "center" });
+    text(location, headerCenter, y + 15.5, fit(location,headerTextWidth,7.5,6.1), "normal", NAVY, { align: "center" });
   const contact = [school.phone, school.email].filter(Boolean).join("  ·  ");
   if (contact)
-    text(contact, headerCenter, y + 21, 6.2, "normal", MUTED, { align: "center" });
+    text(contact, headerCenter, y + 21, fit(contact,headerTextWidth,7.3,5.9), "normal", MUTED, { align: "center" });
   if (school.headteacherName)
     text(
       `Headteacher: ${school.headteacherName}`,
       headerCenter,
       y + 26,
-      5.7,
+      6.9,
       "normal",
       MUTED,
       { align: "center" },
@@ -211,7 +207,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   fillRect(margin + 40, y, contentWidth - 80, 9, PALE, 1.5);
   outlineRect(margin + 40, y, contentWidth - 80, 9, NAVY, 1.5);
-  text("TERMINAL REPORT CARD", pageWidth / 2, y + 6.1, 9.2, "bold", NAVY, {
+  text("TERMINAL REPORT CARD", pageWidth / 2, y + 6.1, 10.4, "bold", NAVY, {
     align: "center",
   });
   y += 12;
@@ -240,12 +236,12 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   summary.forEach(([label, value], index) => {
     const x = margin + index * (summaryWidth + summaryGap);
     fillRect(x, y, summaryWidth, 13, index === 0 ? [237, 248, 243] : PALE, 1.8);
-    text(label, x + 3.5, y + 4.7, 4.8, "bold", MUTED);
-    text(value, x + 3.5, y + 10, 8.4, "bold", index === 0 ? GREEN : NAVY);
+    text(label, x + 3.5, y + 4.7, 6.5, "bold", MUTED);
+    text(value, x + 3.5, y + 10.3, 9.8, "bold", index === 0 ? GREEN : NAVY);
   });
   y += 17;
 
-  text("ACADEMIC PERFORMANCE", margin, y, 7.2, "bold", GREEN);
+  text("ACADEMIC PERFORMANCE", margin, y, 9, "bold", GREEN);
   setStroke(GOLD, 0.9);
   doc.line(margin, y + 2, margin + 28, y + 2);
   y += 4.5;
@@ -278,9 +274,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     theme: "grid",
     styles: {
       font: "helvetica",
-      fontSize: 6.2,
+      fontSize: 8.4,
       textColor: NAVY,
-      cellPadding: 1.25,
+      cellPadding: 2.0,
       lineColor: LINE,
       lineWidth: 0.25,
       valign: "middle",
@@ -289,9 +285,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
       fillColor: NAVY,
       textColor: WHITE,
       fontStyle: "bold",
-      fontSize: 6,
+      fontSize: 7.8,
       halign: "center",
-      cellPadding: 1.5,
+      cellPadding: 1.9,
     },
     alternateRowStyles: { fillColor: [250, 251, 250] },
     columnStyles: {
@@ -310,9 +306,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   room(24);
   const half = (contentWidth - 4) / 2;
-  const infoHeight = 20;
+  const infoHeight = 25;
   outlineRect(margin, y, half, infoHeight, LINE, 2);
-  text("ATTENDANCE", margin + 4, y + 5.5, 5.5, "bold", GREEN);
+  text("ATTENDANCE", margin + 4, y + 6.2, 7.3, "bold", GREEN);
   if (attendance) {
     const rate = attendance.totalDays
       ? ((attendance.daysPresent / attendance.totalDays) * 100).toFixed(1)
@@ -325,7 +321,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   const developmentX = margin + half + 4;
   outlineRect(developmentX, y, half, infoHeight, LINE, 2);
-  text("LEARNER DEVELOPMENT", developmentX + 4, y + 5.5, 5.5, "bold", GREEN);
+  text("LEARNER DEVELOPMENT", developmentX + 4, y + 6.2, 7.1, "bold", GREEN);
   const development: Array<[string, string | undefined]> = [
     ["Conduct", affective?.conduct],
     ["Interest", affective?.interest],
@@ -336,48 +332,59 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const col = index % 2;
     const row = Math.floor(index / 2);
     const x = developmentX + 4 + col * (half / 2 - 1);
-    const top = y + 11 + row * 6;
-    text(`${label}:`, x, top, 4.8, "bold", MUTED);
+    const top = y + 13 + row * 7;
+    text(`${label}:`, x, top, 6.1, "bold", MUTED);
     const display = value || "—";
-    text(display, x + 14, top, fit(display, half / 2 - 18, 5.7, 4.6), "normal", NAVY);
+    text(display, x + 15, top, fit(display, half / 2 - 18, 6.5, 5.2), "normal", NAVY);
   });
   y += infoHeight + 4;
 
   room(39);
-  text("REMARKS", margin, y, 6.8, "bold", GREEN);
+  text("REMARKS", margin, y, 8.7, "bold", GREEN);
   setStroke(GOLD, 0.8);
   doc.line(margin, y + 2, margin + 18, y + 2);
   y += 4.5;
 
   const remarkRow = (label: string, value?: string) => {
-    const h = 13;
+    const h = 17;
     outlineRect(margin, y, contentWidth, h, LINE, 1.5);
-    text(label, margin + 4, y + 4.7, 4.9, "bold", MUTED);
+    text(label, margin + 4, y + 6.4, 6.8, "bold", MUTED);
     const lines = doc.splitTextToSize(value || "No remark recorded.", contentWidth - 45);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.2);
+    doc.setFontSize(8.3);
     doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
-    doc.text(lines.slice(0, 2), margin + 40, y + 4.8);
+    doc.text(lines.slice(0, 2), margin + 40, y + 6.4);
     y += h + 2;
   };
 
   remarkRow("CLASS TEACHER", remarks?.classTeacherRemark);
   remarkRow("HEADTEACHER", remarks?.headteacherRemark);
 
-  room(31);
-  fillRect(margin, y, contentWidth, 10, PALE, 1.5);
-  text("PROMOTED TO", margin + 4, y + 4.2, 4.8, "bold", MUTED);
-  text(promotedTo || "____________________________", margin + 4, y + 8.1, 6.5, "bold", NAVY);
-  text("RESULT SUMMARY", pageWidth - margin - 49, y + 4.2, 4.8, "bold", MUTED);
-  text(
-    scores.length ? `${overallAverage.toFixed(1)}% · ${overallGrade}` : "No scores",
-    pageWidth - margin - 49,
-    y + 8.1,
-    6.5,
-    "bold",
-    NAVY,
-  );
-  y += 15;
+  room(60);
+  const nextTerm = school.nextTermBegins
+    ? new Date(school.nextTermBegins + "T12:00:00").toLocaleDateString("en-GB", {
+        day: "numeric", month: "long", year: "numeric",
+      })
+    : "Not yet announced";
+  const totalMarks = scores.length
+    ? `${scores.reduce((sum, s) => sum + Number(s.total), 0).toFixed(1)} / ${scores.length * 100}`
+    : "No scores recorded";
+  const facts: Array<[string, string]> = [
+    ["PROMOTED TO", promotedTo || "Pending / not recorded"],
+    ["NEXT TERM BEGINS", nextTerm],
+    ["TOTAL MARKS", totalMarks],
+    ["RESULT SUMMARY", scores.length ? `${overallAverage.toFixed(1)}% - ${overallGrade}` : "No scores"],
+  ];
+  const factGap = 4;
+  const factWidth = (contentWidth - factGap) / 2;
+  facts.forEach(([label, value], index) => {
+    const x = margin + (index % 2) * (factWidth + factGap);
+    const top = y + Math.floor(index / 2) * 15;
+    fillRect(x, top, factWidth, 13, PALE, 1.4);
+    text(label, x + 3, top + 4.3, 6.5, "bold", MUTED);
+    text(value, x + 3, top + 10.1, fit(value, factWidth - 6, 8.8, 7.1), "bold", NAVY);
+  });
+  y += 36;
 
   const signatureWidth = (contentWidth - 14) / 2;
   [
@@ -387,21 +394,22 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const xx = Number(x);
     setStroke(NAVY, 0.35);
     doc.line(xx, y + 8, xx + signatureWidth, y + 8);
-    text(String(label), xx, y + 13, 5.1, "bold", MUTED);
-    text("Signature & date", xx, y + 17, 4.8, "normal", MUTED);
+    text(String(label), xx, y + 13, 6.8, "bold", MUTED);
+    text("Signature & date", xx, y + 18, 6.2, "normal", MUTED);
   });
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page);
     if (page > 1) drawPageFrame();
+    addWatermark();
     setStroke(LINE, 0.25);
     doc.line(margin, pageHeight - 11, pageWidth - margin, pageHeight - 11);
     text(
       `${school.name} · ${school.academicYear} · Term ${school.currentTerm} · Page ${page} of ${pages}`,
       pageWidth / 2,
       pageHeight - 6.5,
-      5.2,
+      6.3,
       "normal",
       MUTED,
       { align: "center" },
