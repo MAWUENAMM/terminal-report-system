@@ -148,7 +148,7 @@ begin
       or NEW.sba_raw>mx
       or NEW.exam_raw<0
       or NEW.exam_raw>100 then
-      raise exception 'SBA must be within the school's input maximum, and Exam must be between 0 and 100.';
+      raise exception 'SBA must be within the configured raw maximum, and Exam must be between 0 and 100.';
     end if;
 
     NEW.sba_scaled=round(NEW.sba_raw*sb/mx,2);
