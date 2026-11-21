@@ -20,6 +20,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { Field, Modal } from "@/components/ui";
+import RemarkPresetSelect from "@/components/RemarkPresetSelect";
+import type { RemarkCategory } from "@/lib/remark-options";
 import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
 import { currentSnapshot, downloadReport } from "@/lib/reporting";
@@ -550,8 +552,30 @@ export default function StudentProfile({ student, onClose }: Props) {
       {editing && (
         <Modal title={`Edit learner records · ${fullName(currentStudent)}`} onClose={() => setEditing(false)}>
           <form className="space-y-5" onSubmit={(e) => void saveNotes(e)}>
-            {ownClass && <><div className="grid gap-4 sm:grid-cols-2"><Field label="Days present"><input className="field" type="number" min={0} max={366} value={notes.days_present} onChange={(e) => setNotes({ ...notes, days_present: Number(e.target.value) })} /></Field><Field label="Total school days"><input className="field" type="number" min={0} max={366} value={notes.total_days} onChange={(e) => setNotes({ ...notes, total_days: Number(e.target.value) })} /></Field></div><div className="grid gap-4 sm:grid-cols-2">{["conduct", "interest", "attitude", "talents"].map((key) => <Field key={key} label={key[0].toUpperCase() + key.slice(1)}><input className="field" maxLength={150} value={notes[key]} onChange={(e) => setNotes({ ...notes, [key]: e.target.value })} /></Field>)}</div><Field label="Class teacher’s remark"><textarea className="field" rows={4} maxLength={500} value={notes.class_teacher_remark} onChange={(e) => setNotes({ ...notes, class_teacher_remark: e.target.value })} /></Field></>}
-            {leader && <Field label="Headteacher’s remark"><textarea className="field" rows={4} maxLength={500} value={notes.headteacher_remark} onChange={(e) => setNotes({ ...notes, headteacher_remark: e.target.value })} /></Field>}
+            {ownClass && <><div className="grid gap-4 sm:grid-cols-2"><Field label="Days present"><input className="field" type="number" min={0} max={366} value={notes.days_present} onChange={(e) => setNotes({ ...notes, days_present: Number(e.target.value) })} /></Field><Field label="Total school days"><input className="field" type="number" min={0} max={366} value={notes.total_days} onChange={(e) => setNotes({ ...notes, total_days: Number(e.target.value) })} /></Field></div><div className="grid gap-4 sm:grid-cols-2">{["conduct", "interest", "attitude", "talents"].map((key) => <Field key={key} label={key[0].toUpperCase() + key.slice(1)}>
+              <div className="space-y-2">
+                <RemarkPresetSelect category={key as RemarkCategory}
+                  current={String(notes[key] || "")}
+                  onSelect={(next)=>setNotes({...notes,[key]:next})} disabled={!termOpen}/>
+                <input className="field" maxLength={150} value={notes[key]}
+                  onChange={(e)=>setNotes({...notes,[key]:e.target.value})}/>
+              </div>
+            </Field>)}</div><Field label="Class teacher’s remark"><div className="space-y-2">
+              <RemarkPresetSelect category="class_teacher_remark"
+                current={String(notes.class_teacher_remark||"")}
+                onSelect={(next)=>setNotes({...notes,class_teacher_remark:next})} disabled={!termOpen}/>
+              <textarea className="field" rows={4} maxLength={500}
+                value={notes.class_teacher_remark}
+                onChange={(e)=>setNotes({...notes,class_teacher_remark:e.target.value})}/>
+            </div></Field></>}
+            {leader && <Field label="Headteacher’s remark"><div className="space-y-2">
+              <RemarkPresetSelect category="headteacher_remark"
+                current={String(notes.headteacher_remark||"")}
+                onSelect={(next)=>setNotes({...notes,headteacher_remark:next})} disabled={!termOpen}/>
+              <textarea className="field" rows={4} maxLength={500}
+                value={notes.headteacher_remark}
+                onChange={(e)=>setNotes({...notes,headteacher_remark:e.target.value})}/>
+            </div></Field>}
             {termOpen && <button disabled={busy} className="btn-primary">Save records</button>}
           </form>
         </Modal>
