@@ -11,6 +11,7 @@ export default function Scores() {
     [classId, setClassId] = useState(w.classes[0]?.id || ""),
     [subjectId, setSubjectId] = useState(""),
     [edits, setEdits] = useState<Record<string, Draft>>({});
+  const sbaMax = Number(w.school.sba_input_max) || 100;
   const cls = w.classes.find((c) => c.id === classId),
     canAll =
       w.profile.role === "ADMIN" || cls?.class_teacher_id === w.profile.id;
@@ -65,7 +66,7 @@ export default function Scores() {
       <PageHeader
         eyebrow="Assessment"
         title="SBA & examination scores"
-        description={`Term ${w.school.current_term} · ${w.school.academic_year}. Enter raw scores out of 100. The school weighting is ${w.school.sba_weight}% SBA and ${w.school.exam_weight}% examination.`}
+        description={`Term ${w.school.current_term} · ${w.school.academic_year}. Enter SBA marks out of ${sbaMax} and examination marks out of 100. Both scale automatically to ${w.school.sba_weight}% SBA and ${w.school.exam_weight}% examination.`}
       />
       <div className="surface grid gap-4 rounded-2xl p-5 sm:grid-cols-2">
         <Field label="Class">
@@ -138,11 +139,11 @@ export default function Scores() {
                   !Number.isFinite(a) ||
                   !Number.isFinite(b) ||
                   a < 0 ||
-                  a > 100 ||
+                  a > sbaMax ||
                   b < 0 ||
                   b > 100
                 )
-                  throw new Error("Scores must be between 0 and 100.");
+                  throw new Error(`SBA must be 0–${sbaMax}; examination must be 0–100.`);
                 const existing = scoreFor(id);
                 return {
                   ...(existing ? { id: existing.id } : {}),
@@ -171,8 +172,8 @@ export default function Scores() {
               <thead>
                 <tr>
                   <th>Learner</th>
-                  <th>SBA / 100</th>
-                  <th>Exam / 100</th>
+                  <th>SBA / {sbaMax} → {w.school.sba_weight}%</th>
+                  <th>Exam / 100 → {w.school.exam_weight}%</th>
                   <th>Weighted total</th>
                   <th>Grade</th>
                   <th>Subject remark</th>
@@ -185,7 +186,7 @@ export default function Scores() {
                       d.sba_raw !== "" && d.exam_raw !== ""
                         ? computeTotal(
                             Number(d.sba_raw),
-                            100,
+                            sbaMax,
                             Number(d.exam_raw),
                             100,
                             Number(w.school.sba_weight),
@@ -209,13 +210,16 @@ export default function Scores() {
                           className="field min-w-24"
                           type="number"
                           min={0}
-                          max={100}
+                          max={sbaMax}
                           step="0.01"
                           value={d.sba_raw}
                           onChange={(e) =>
                             change(s.id, "sba_raw", e.target.value)
                           }
                         />
+                        <span className="mt-1 block text-xs text-muted">
+                          {computed ? `${computed.sbaScaled.toFixed(2)} / ${w.school.sba_weight} scaled` : `Max ${sbaMax}`}
+                        </span>
                       </td>
                       <td>
                         <input
@@ -231,6 +235,9 @@ export default function Scores() {
                             change(s.id, "exam_raw", e.target.value)
                           }
                         />
+                        <span className="mt-1 block text-xs text-muted">
+                          {computed ? `${computed.examScaled.toFixed(2)} / ${w.school.exam_weight} scaled` : "Max 100"}
+                        </span>
                       </td>
                       <td className="font-semibold tabular-nums">
                         {computed?.total.toFixed(2) || "—"}
