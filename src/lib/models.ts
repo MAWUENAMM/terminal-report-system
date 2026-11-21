@@ -37,6 +37,8 @@ export interface School {
   region?: string;
   academic_year: string;
   current_term: number;
+  sba_input_max: number;
+  next_term_begins?: string | null;
   sba_weight: number;
   exam_weight: number;
 }
