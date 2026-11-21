@@ -215,9 +215,17 @@ end
 $function$
 ;
 
+-- Existing historical rows may have been entered before an administrator
+-- changed subject assignments. Revalidating their current assignment during
+-- a raw-scale conversion would reject legitimate already-saved marks.
+-- ALTER TABLE holds an exclusive lock until the migration transaction ends;
+-- temporarily bypass only this trigger, update audited SBA raw values, and
+-- restore the validation trigger before the transaction can commit.
+alter table public.scores disable trigger validate_write;
 update public.scores sc set sba_raw=a.new_sba_raw
 from private.sba60_conversion_audit a
 where a.score_id=sc.id;
+alter table public.scores enable trigger validate_write;
 
 -- Abort the whole migration if any saved weighted mark, total or grade differs.
 do $assert$
@@ -225,7 +233,12 @@ begin
   if exists(
     select 1 from public.scores sc
     join private.sba60_conversion_audit a on a.score_id=sc.id
-    where sc.sba_scaled<>a.old_sba_scaled or sc.total<>a.old_total or sc.grade<>a.old_grade
+    join public.schools sch on sch.id=sc.school_id
+    where sc.sba_scaled<>a.old_sba_scaled
+       or sc.total<>a.old_total
+       or sc.grade<>a.old_grade
+       or sc.sba_raw<>a.new_sba_raw
+       or round(sc.sba_raw*sch.sba_weight/sch.sba_input_max,2)<>a.old_sba_scaled
   ) then raise exception 'SBA migration would change saved grades or weighted results. Rolled back.'; end if;
   if exists(
     select 1 from public.scores sc
