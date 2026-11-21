@@ -23,6 +23,7 @@ export interface School {
   region?: string;
   academicYear: string;
   currentTerm: 1 | 2 | 3;
+  nextTermBegins?: string | null;
   sbaWeight: number;
   examWeight: number;
   gradingScale: GradingScale;
