@@ -5,12 +5,20 @@ import { PageHeader, Field, Empty } from "@/components/ui";
 import { saveRows } from "@/lib/api";
 import { fullName } from "@/lib/models";
 import { computeTotal } from "@/lib/grading";
+import { filterAssessmentStudents, isCompleteMark, markEntryError } from "@/lib/assessment-filters";
+import type { GenderFilter, NameSort } from "@/lib/class-sheets";
 type Draft = { sba_raw: string; exam_raw: string; subject_remark: string };
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 export default function Scores() {
   const { data: w, run, busy } = useWorkspace(),
     [classId, setClassId] = useState(w.classes[0]?.id || ""),
     [subjectId, setSubjectId] = useState(""),
-    [edits, setEdits] = useState<Record<string, Draft>>({});
+    [edits, setEdits] = useState<Record<string, Draft>>({}),
+    [query, setQuery] = useState(""),
+    [gender, setGender] = useState<GenderFilter>(""),
+    [order, setOrder] = useState<NameSort>("az"),
+    [initial, setInitial] = useState(""),
+    [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const sbaMax = Number(w.school.sba_input_max) || 100;
   const cls = w.classes.find((c) => c.id === classId),
     canAll =
@@ -33,7 +41,9 @@ export default function Scores() {
     ),
     students = w.students.filter(
       (s) => s.class_id === classId && s.status === "ACTIVE",
-    );
+    ),
+    visibleStudents = filterAssessmentStudents(students, { query, gender, order, initial }),
+    invalidCount = Object.keys(validationErrors).length;
   const scoreFor = (id: string) =>
     w.scores.find(
       (s) =>
@@ -53,7 +63,20 @@ export default function Scores() {
     );
   }
   function change(id: string, key: keyof Draft, value: string) {
-    setEdits({ ...edits, [id]: { ...draftFor(id), [key]: value } });
+    if (key === "sba_raw" || key === "exam_raw") {
+      const label = key === "sba_raw" ? "SBA" : "Exam";
+      const error = markEntryError(value, key === "sba_raw" ? sbaMax : 100, label);
+      const errorKey = `${id}:${key}`;
+      setValidationErrors((previous) => {
+        const next = { ...previous };
+        if (error) next[errorKey] = error;
+        else delete next[errorKey];
+        return next;
+      });
+      // Leave the previous mark untouched. Never silently convert 61 to 60 or 101 to 100.
+      if (error) return;
+    }
+    setEdits((previous) => ({ ...previous, [id]: { ...draftFor(id), [key]: value } }));
   }
   function discard() {
     return (
@@ -78,6 +101,10 @@ export default function Scores() {
                 setClassId(e.target.value);
                 setSubjectId("");
                 setEdits({});
+                setValidationErrors({});
+                setQuery("");
+                setGender("");
+                setInitial("");
               }
             }}
           >
@@ -97,6 +124,7 @@ export default function Scores() {
               if (discard()) {
                 setSubjectId(e.target.value);
                 setEdits({});
+                setValidationErrors({});
               }
             }}
           >
@@ -109,6 +137,61 @@ export default function Scores() {
           </select>
         </Field>
       </div>
+      {selected && students.length > 0 && (
+        <section className="surface mt-4 rounded-2xl p-4 sm:p-5" aria-label="Assessment learner filters">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="Search learner name or admission number">
+              <input
+                className="field"
+                type="search"
+                placeholder="Type a student name..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search learners by name or admission number"
+              />
+            </Field>
+            <Field label="Sort names">
+              <select className="field" value={order}
+                onChange={(e) => setOrder(e.target.value as NameSort)}
+                aria-label="Sort assessment learners by name">
+                <option value="az">Names: A–Z</option>
+                <option value="za">Names: Z–A</option>
+              </select>
+            </Field>
+            <Field label="Gender">
+              <select className="field" value={gender}
+                onChange={(e) => setGender(e.target.value as GenderFilter)}
+                aria-label="Filter assessment learners by gender">
+                <option value="">Male and female</option>
+                <option value="M">Male only</option>
+                <option value="F">Female only</option>
+              </select>
+            </Field>
+            <Field label="Name starts with">
+              <select className="field" value={initial}
+                onChange={(e) => setInitial(e.target.value)}
+                aria-label="Filter assessment learners by first letter">
+                <option value="">All letters (A–Z)</option>
+                {ALPHABET.map((letter) => (
+                  <option key={letter} value={letter}>{letter}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted" aria-live="polite">
+              Showing {visibleStudents.length} of {students.length} active learners.
+              Filters only change the displayed rows; existing marks stay unchanged.
+            </p>
+            {(query || gender || initial || order !== "az") && (
+              <button type="button" className="btn-secondary"
+                onClick={() => { setQuery(""); setGender(""); setOrder("az"); setInitial(""); }}>
+                Clear filters
+              </button>
+            )}
+          </div>
+        </section>
+      )}
       {!open && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           This term is closed. Marks are read-only. School leadership can start
@@ -128,11 +211,15 @@ export default function Scores() {
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await run(async () => {
+              if (invalidCount) {
+                throw new Error("A mark above the permitted maximum was rejected. Correct the highlighted entry before saving.");
+              }
               const rows = Object.entries(edits).map(([id, d]) => {
-                if (d.sba_raw === "" || d.exam_raw === "")
-                  throw new Error(
-                    `Enter both scores for ${fullName(students.find((s) => s.id === id)!)}.`,
-                  );
+                if (!isCompleteMark(d.sba_raw, sbaMax, "SBA") ||
+                    !isCompleteMark(d.exam_raw, 100, "Exam")) {
+                  const learner = students.find((s) => s.id === id);
+                  throw new Error(`Enter valid SBA (0–${sbaMax}) and Exam (0–100) marks for ${learner ? fullName(learner) : "this learner"}.`);
+                }
                 const a = Number(d.sba_raw),
                   b = Number(d.exam_raw);
                 if (
@@ -164,7 +251,7 @@ export default function Scores() {
                 "student_id,subject_id,term,academic_year",
               );
             }, "Marks saved and available to authorised staff.");
-            if (ok) setEdits({});
+            if (ok) { setEdits({}); setValidationErrors({}); }
           }}
         >
           <div className="surface overflow-x-auto rounded-2xl">
@@ -180,10 +267,16 @@ export default function Scores() {
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => {
+                {!visibleStudents.length && (
+                  <tr><td colSpan={6} className="py-8 text-center text-muted">
+                    No learners match these filters. Change the search, gender, or starting letter.
+                  </td></tr>
+                )}
+                {visibleStudents.map((s) => {
                   const d = draftFor(s.id),
                     computed =
-                      d.sba_raw !== "" && d.exam_raw !== ""
+                      isCompleteMark(d.sba_raw, sbaMax, "SBA") &&
+                      isCompleteMark(d.exam_raw, 100, "Exam")
                         ? computeTotal(
                             Number(d.sba_raw),
                             sbaMax,
@@ -209,14 +302,22 @@ export default function Scores() {
                           disabled={!open}
                           className="field min-w-24"
                           type="number"
+                          inputMode="decimal"
                           min={0}
                           max={sbaMax}
                           step="0.01"
+                          aria-invalid={Boolean(validationErrors[`${s.id}:sba_raw`])}
+                          aria-describedby={`sba-error-${s.id}`}
                           value={d.sba_raw}
                           onChange={(e) =>
                             change(s.id, "sba_raw", e.target.value)
                           }
                         />
+                        {validationErrors[`${s.id}:sba_raw`] && (
+                          <p id={`sba-error-${s.id}`} className="mt-1 max-w-48 text-xs font-semibold text-red-700" role="alert">
+                            {validationErrors[`${s.id}:sba_raw`]}
+                          </p>
+                        )}
                         <span className="mt-1 block text-xs text-muted">
                           {computed ? `${computed.sbaScaled.toFixed(2)} / ${w.school.sba_weight} scaled` : `Max ${sbaMax}`}
                         </span>
@@ -227,14 +328,22 @@ export default function Scores() {
                           disabled={!open}
                           className="field min-w-24"
                           type="number"
+                          inputMode="decimal"
                           min={0}
                           max={100}
                           step="0.01"
+                          aria-invalid={Boolean(validationErrors[`${s.id}:exam_raw`])}
+                          aria-describedby={`exam-error-${s.id}`}
                           value={d.exam_raw}
                           onChange={(e) =>
                             change(s.id, "exam_raw", e.target.value)
                           }
                         />
+                        {validationErrors[`${s.id}:exam_raw`] && (
+                          <p id={`exam-error-${s.id}`} className="mt-1 max-w-48 text-xs font-semibold text-red-700" role="alert">
+                            {validationErrors[`${s.id}:exam_raw`]}
+                          </p>
+                        )}
                         <span className="mt-1 block text-xs text-muted">
                           {computed ? `${computed.examScaled.toFixed(2)} / ${w.school.exam_weight} scaled` : "Max 100"}
                         </span>
@@ -261,13 +370,19 @@ export default function Scores() {
               </tbody>
             </table>
           </div>
-          <div className="mt-5 flex items-center justify-between gap-3">
-            <span className="text-sm text-muted">
-              {Object.keys(edits).length} learners with unsaved changes
-            </span>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted">
+                {Object.keys(edits).length} learners with unsaved changes
+                {visibleStudents.length < students.length ? " (including any edited learners hidden by filters)" : ""}
+              </p>
+              {invalidCount > 0 && <p className="mt-1 text-sm font-semibold text-red-700" role="alert">
+                {invalidCount} invalid mark attempt{invalidCount === 1 ? "" : "s"} rejected. Correct the highlighted input before saving.
+              </p>}
+            </div>
             <button
               className="btn-primary"
-              disabled={busy || !open || !Object.keys(edits).length}
+              disabled={busy || !open || invalidCount > 0 || !Object.keys(edits).length}
             >
               Save marks
             </button>
