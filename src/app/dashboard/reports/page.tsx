@@ -104,7 +104,7 @@ export default function Reports() {
       t.status === "OPEN",
   );
 
-  const expectedSubjectIds = useMemo(() => {
+  const expectedSubjectIds = (() => {
     if (!selectedClass) return [];
     const assigned = w.assignments
       .filter((a) => a.class_id === selectedClass.id)
@@ -118,9 +118,9 @@ export default function Reports() {
           (subject.level === "ALL" || subject.level === selectedClass.level),
       )
       .map((subject) => subject.id);
-  }, [selectedClass, w.assignments, w.subjects]);
+  })();
 
-  const currentRows = useMemo(() => {
+  const currentRows = (() => {
     const students = w.students.filter(
       (student) => student.class_id === selected && student.status === "ACTIVE",
     );
@@ -140,7 +140,7 @@ export default function Reports() {
 
       return { student, snapshot, report, status, lastArchive };
     });
-  }, [expectedSubjectIds.length, selected, w]);
+  })();
 
   const visibleRows = currentRows.filter((row) => {
     const search = query.trim().toLowerCase();
