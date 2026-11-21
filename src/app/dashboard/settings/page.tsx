@@ -21,24 +21,26 @@ export default function Settings() {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (!dirty) setSchool(w.school);
+    const frame = window.requestAnimationFrame(() => {
+      if (!dirty) setSchool(w.school);
+    });
     let active = true;
     void resolveSchoolLogoUrl(w.school.logo_url).then((url) => {
       if (active) setLogoUrl(url);
     });
     return () => {
+      window.cancelAnimationFrame(frame);
       active = false;
     };
   }, [w.school, dirty]);
 
   useEffect(() => {
-    if (!logoFile) {
-      setLogoPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(logoFile);
-    setLogoPreview(url);
-    return () => URL.revokeObjectURL(url);
+    const url = logoFile ? URL.createObjectURL(logoFile) : null;
+    const frame = window.requestAnimationFrame(() => setLogoPreview(url));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [logoFile]);
 
   if (w.profile.role !== "ADMIN") return <Restricted />;
@@ -96,6 +98,8 @@ export default function Settings() {
                 region,
                 sba_weight,
                 exam_weight,
+                sba_input_max,
+                next_term_begins,
               } = school;
               await updateRow("schools", school.id, {
                 name,
@@ -107,6 +111,8 @@ export default function Settings() {
                 region,
                 sba_weight,
                 exam_weight,
+                sba_input_max,
+                next_term_begins: next_term_begins || null,
               });
             }, "School settings saved.");
             if (ok) setDirty(false);
@@ -141,6 +147,19 @@ export default function Settings() {
           </section>
 
           <section className="surface rounded-2xl p-6">
+            <h2 className="font-semibold">Next term begins</h2>
+            <p className="mt-1 text-sm text-muted">
+              Choose the official reopening date. It appears on all new report PDFs for this term.
+              It automatically clears when a new term starts.
+            </p>
+            <Field label="Next term begins (date)">
+              <input className="field mt-3" type="date"
+                value={school.next_term_begins || ""}
+                onChange={(e) => { setDirty(true); setSchool({...school,next_term_begins:e.target.value || null}); }}
+              />
+            </Field>
+          </section>
+          <section className="surface rounded-2xl p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="font-semibold">Assessment weights</h2>
@@ -151,6 +170,24 @@ export default function Settings() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                 {w.school.academic_year} · Term {w.school.current_term}
               </span>
+            </div>
+            <div className="mt-4">
+              <Field label="SBA raw marks are entered out of">
+                <select className="field mt-2" value={school.sba_input_max || 100}
+                  disabled={locked}
+                  onChange={(e) => {
+                    setDirty(true);
+                    setSchool({...school,sba_input_max:Number(e.target.value)});
+                  }}>
+                  <option value={60}>60 marks</option>
+                  <option value={100}>100 marks (legacy)</option>
+                </select>
+              </Field>
+              <p className="mt-2 text-xs text-muted">
+                Your SBA maximum is independent of the weighting: for example, 48/60 becomes 40/50
+                when SBA carries 50% of the final score.
+                This selection locks after the first marks are entered in a term.
+              </p>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-4">
               <Field label="SBA %">
