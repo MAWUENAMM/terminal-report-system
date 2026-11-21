@@ -14,6 +14,8 @@ import {
   UserRound,
 } from "lucide-react";
 import StudentProfile from "@/components/StudentProfile";
+import RemarkPresetSelect from "@/components/RemarkPresetSelect";
+import type { RemarkCategory } from "@/lib/remark-options";
 import { useWorkspace } from "@/components/workspace";
 import { Empty, Field, Modal, PageHeader, Restricted } from "@/components/ui";
 import { browserClient } from "@/lib/supabase/client";
@@ -810,6 +812,14 @@ export default function Reports() {
             <div className="grid gap-4 sm:grid-cols-2">
               {["conduct", "interest", "attitude", "talents"].map((key) => (
                 <Field key={key} label={key[0].toUpperCase() + key.slice(1)}>
+                  <div className="space-y-2">
+                    <RemarkPresetSelect
+                      category={key as RemarkCategory}
+                      current={String(notes[key] || "")}
+                      onSelect={(next)=>setNotes({...notes,[key]:next})}
+                      disabled={!open || !(w.profile.role === "ADMIN" ||
+                        w.classes.find((c) => c.id === editingStudent.class_id)?.class_teacher_id === w.profile.id)}
+                    />
                   <input
                     className="field"
                     disabled={
@@ -823,10 +833,18 @@ export default function Reports() {
                     value={notes[key]}
                     onChange={(e) => setNotes({ ...notes, [key]: e.target.value })}
                   />
+                  </div>
                 </Field>
               ))}
             </div>
             <Field label="Class teacher’s remark">
+              <div className="space-y-2">
+                <RemarkPresetSelect category="class_teacher_remark"
+                  current={String(notes.class_teacher_remark || "")}
+                  onSelect={(next)=>setNotes({...notes,class_teacher_remark:next})}
+                  disabled={!open || !(w.profile.role === "ADMIN" ||
+                    w.classes.find((c) => c.id === editingStudent.class_id)?.class_teacher_id === w.profile.id)}
+                />
               <textarea
                 className="field"
                 rows={3}
@@ -843,8 +861,15 @@ export default function Reports() {
                   setNotes({ ...notes, class_teacher_remark: e.target.value })
                 }
               />
+              </div>
             </Field>
             <Field label="Headmaster’s remark">
+              <div className="space-y-2">
+                <RemarkPresetSelect category="headteacher_remark"
+                  current={String(notes.headteacher_remark || "")}
+                  onSelect={(next)=>setNotes({...notes,headteacher_remark:next})}
+                  disabled={!leader || !open}
+                />
               <textarea
                 className="field"
                 rows={3}
@@ -855,6 +880,7 @@ export default function Reports() {
                   setNotes({ ...notes, headteacher_remark: e.target.value })
                 }
               />
+              </div>
             </Field>
             {open && (
               <button disabled={busy} className="btn-primary">
