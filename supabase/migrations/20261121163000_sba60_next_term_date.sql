@@ -2,6 +2,9 @@
 -- Preserve original raw mark/total/grade in a private audit table.
 -- Existing closed report snapshots remain unchanged.
 alter table public.schools add column if not exists next_term_begins date;
+alter table public.schools add column if not exists sba_input_max numeric not null default 100 check (sba_input_max in (60,100));
+-- School-specific request: keep other tenants' /100 assessments unchanged.
+update public.schools set sba_input_max=60 where id='9af47605-e793-44ea-a5d8-8d5ab039f971' and name='THE ARK ACADEMY';
 
 create or replace function private.clear_next_term_date_on_rollover()
 returns trigger language plpgsql set search_path='' as $reset$
@@ -14,6 +17,19 @@ drop trigger if exists reset_next_term_date on public.schools;
 create trigger reset_next_term_date
   before update of academic_year,current_term on public.schools
   for each row execute function private.clear_next_term_date_on_rollover();
+
+create or replace function private.guard_sba_input_max_change()
+returns trigger language plpgsql set search_path='' as $locked$
+begin
+  if NEW.sba_input_max is distinct from OLD.sba_input_max
+     and exists(select 1 from public.scores sc
+      where sc.school_id=OLD.id and sc.academic_year=OLD.academic_year and sc.term=OLD.current_term)
+  then raise exception 'The SBA input maximum is locked after term marks have been entered.'; end if;
+  return NEW;
+end $locked$;
+drop trigger if exists lock_school_sba_raw_basis on public.schools;
+create trigger lock_school_sba_raw_basis before update of sba_input_max on public.schools
+  for each row execute function private.guard_sba_input_max_change();
 
 create table if not exists private.sba60_conversion_audit (
   score_id uuid primary key,
@@ -35,14 +51,14 @@ begin
     select 1 from public.scores sc
     join public.academic_terms t on t.school_id=sc.school_id
       and t.academic_year=sc.academic_year and t.term=sc.term
-    where t.status='OPEN' and (sc.sba_raw<0 or sc.sba_raw>100 or sc.exam_raw<0 or sc.exam_raw>100)
+    where t.status='OPEN' and sc.school_id='9af47605-e793-44ea-a5d8-8d5ab039f971' and (sc.sba_raw<0 or sc.sba_raw>100 or sc.exam_raw<0 or sc.exam_raw>100)
   ) then raise exception 'Out-of-range legacy marks; review before converting'; end if;
   if exists(
     select 1 from public.scores sc
     join public.academic_terms t on t.school_id=sc.school_id
       and t.academic_year=sc.academic_year and t.term=sc.term
     join private.sba60_conversion_audit a on a.score_id=sc.id
-    where t.status='OPEN'
+    where t.status='OPEN' and sc.school_id='9af47605-e793-44ea-a5d8-8d5ab039f971'
   ) then raise exception 'Some active marks already have an SBA conversion audit; abort double-conversion'; end if;
 end $precheck$;
 
@@ -52,7 +68,7 @@ select sc.id,sc.school_id,sc.academic_year,sc.term,sc.sba_raw,round(sc.sba_raw*0
        sc.sba_scaled,sc.total,sc.grade
 from public.scores sc join public.academic_terms t
   on sc.school_id=t.school_id and sc.academic_year=t.academic_year and sc.term=t.term
-where t.status='OPEN';
+where t.status='OPEN' and sc.school_id='9af47605-e793-44ea-a5d8-8d5ab039f971';
 
 -- Same original trigger logic for attendance, remarks and class assignments.
 -- Only SBA input maximum and SBA /60 scaling are changed.
@@ -73,6 +89,7 @@ declare
   cls public.classes;
   sb numeric;
   ex numeric;
+  mx numeric;
 begin
   rowdata=case when TG_OP='DELETE' then to_jsonb(OLD) else to_jsonb(NEW) end;
   s=(rowdata->>'school_id')::uuid;
@@ -122,19 +139,19 @@ begin
       raise exception 'Subject is not offered by this class.';
     end if;
 
+    select sba_weight,exam_weight,sba_input_max into sb,ex,mx
+      from public.schools where id=s;
+
     if NEW.sba_raw is null
       or NEW.exam_raw is null
       or NEW.sba_raw<0
-      or NEW.sba_raw>60
+      or NEW.sba_raw>mx
       or NEW.exam_raw<0
       or NEW.exam_raw>100 then
-      raise exception 'SBA must be between 0 and 60, and Exam must be between 0 and 100.';
+      raise exception 'SBA must be within the school's input maximum, and Exam must be between 0 and 100.';
     end if;
 
-    select sba_weight,exam_weight into sb,ex
-      from public.schools where id=s;
-
-    NEW.sba_scaled=round(NEW.sba_raw*sb/60,2);
+    NEW.sba_scaled=round(NEW.sba_raw*sb/mx,2);
     NEW.exam_scaled=round(NEW.exam_raw*ex/100,2);
     NEW.total=NEW.sba_scaled+NEW.exam_scaled;
     NEW.grade=case
@@ -214,6 +231,6 @@ begin
     select 1 from public.scores sc
     join public.academic_terms t on t.school_id=sc.school_id and
        t.academic_year=sc.academic_year and t.term=sc.term
-    where t.status='OPEN' and sc.sba_raw>60
+    where t.status='OPEN' and sc.sba_raw>(select sba_input_max from public.schools where id=sc.school_id)
   ) then raise exception 'Some active SBA marks still exceed 60.'; end if;
 end $assert$;
