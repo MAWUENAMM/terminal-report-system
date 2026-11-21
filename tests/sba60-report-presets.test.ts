@@ -7,7 +7,7 @@ test("Ark Academy /60 SBA and /100 exam each scale to 50 marks", () => {
   assert.equal(scaleScore(48, 60, 50), 40);
   assert.deepEqual(computeTotal(48, 60, 70, 100), {
     sbaScaled: 40, examScaled: 35, total: 75, grade: "B",
-    descriptor: "VERY GOOD",
+    descriptor: "Very Good",
   });
   assert.equal(computeTotal(60, 60, 100, 100).total, 100);
   assert.equal(computeTotal(0, 60, 0, 100).total, 0);
