@@ -304,7 +304,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   y = ((doc as any).lastAutoTable?.finalY || y) + 4;
 
-  room(24);
+  room(29);
   const half = (contentWidth - 4) / 2;
   const infoHeight = 25;
   outlineRect(margin, y, half, infoHeight, LINE, 2);
@@ -339,7 +339,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   });
   y += infoHeight + 4;
 
-  room(39);
+  room(42);
   text("REMARKS", margin, y, 8.7, "bold", GREEN);
   setStroke(GOLD, 0.8);
   doc.line(margin, y + 2, margin + 18, y + 2);
@@ -349,9 +349,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const h = 17;
     outlineRect(margin, y, contentWidth, h, LINE, 1.5);
     text(label, margin + 4, y + 6.4, 6.8, "bold", MUTED);
-    const lines = doc.splitTextToSize(value || "No remark recorded.", contentWidth - 45);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.3);
+    const lines = doc.splitTextToSize(value || "No remark recorded.", contentWidth - 45);
     doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
     doc.text(lines.slice(0, 2), margin + 40, y + 6.4);
     y += h + 2;
