@@ -21,24 +21,26 @@ export default function Settings() {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (!dirty) setSchool(w.school);
+    const frame = window.requestAnimationFrame(() => {
+      if (!dirty) setSchool(w.school);
+    });
     let active = true;
     void resolveSchoolLogoUrl(w.school.logo_url).then((url) => {
       if (active) setLogoUrl(url);
     });
     return () => {
+      window.cancelAnimationFrame(frame);
       active = false;
     };
   }, [w.school, dirty]);
 
   useEffect(() => {
-    if (!logoFile) {
-      setLogoPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(logoFile);
-    setLogoPreview(url);
-    return () => URL.revokeObjectURL(url);
+    const url = logoFile ? URL.createObjectURL(logoFile) : null;
+    const frame = window.requestAnimationFrame(() => setLogoPreview(url));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [logoFile]);
 
   if (w.profile.role !== "ADMIN") return <Restricted />;
