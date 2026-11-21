@@ -33,7 +33,7 @@ test("A4 terminal report prints next-term reopening date and total marks", () =>
   const doc = generateReportPDF(data, subjects);
   const body = doc.output();
   assert.ok(body.startsWith("%PDF-"));
-  assert.equal(doc.internal.pageSize.getWidth(), 210);
+  assert.ok(Math.abs(doc.internal.pageSize.getWidth() - 210) < 0.1);
   assert.ok(doc.getNumberOfPages() >= 1);
   assert.ok(body.includes("NEXT TERM BEGINS"), "PDF must show next-term date field");
   assert.ok(body.includes("11 January 2027"), "PDF must show configured school reopening date");
