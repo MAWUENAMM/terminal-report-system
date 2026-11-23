@@ -151,8 +151,8 @@ export default function Settings() {
           <section className="surface rounded-2xl p-6">
             <h2 className="font-semibold">Attendance: total school days this term</h2>
             <p className="mt-1 text-sm leading-6 text-muted">
-              Set the official total number of days for ${w.school.academic_year},
-              Term ${w.school.current_term}. This applies to all learner reports and
+              Set the official total number of days for {w.school.academic_year},
+              Term {w.school.current_term}. This applies to all learner reports and
               synchronizes existing attendance records for the current open term.
               It never fills in or guesses an individual learner's days present.
             </p>
