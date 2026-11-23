@@ -5,8 +5,6 @@ import { generateGradeNineMockPDF } from "./grade9-report-pdf";
 import { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
 import { getPerformanceRemark } from "@/lib/grading";
-import { isGradeNineClass } from "@/lib/grade9-mock";
-import { generateGradeNineMockPDF } from "@/lib/grade9-mock-report-pdf";
 
 type RGB = [number, number, number];
 
