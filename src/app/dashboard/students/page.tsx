@@ -281,7 +281,7 @@ export default function Students() {
                         {protectedRecords && (
                           <p className="mt-2 text-xs text-muted">
                             This learner has academic history. Withdraw or Graduate preserves it;
-                            permanent deletion requires the administrator's typed confirmation.
+                            permanent deletion requires the administrator’s typed confirmation.
                           </p>
                         )}
                       </td>
