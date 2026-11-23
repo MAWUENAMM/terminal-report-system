@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeGradeNineMock, isGradeNineClass, mockBandFor } from "../src/lib/grade9-mock";
+import { computeGradeNineMock, gradeNineExamScore, isGradeNineClass, mockBandFor } from "../src/lib/grade9-mock";
 import { generateReportPDF } from "../src/lib/report-pdf";
 import type { ReportCardData, Subject } from "../src/types";
 import { buildClassResultSheet } from "../src/lib/class-sheets";
@@ -20,13 +20,14 @@ const subjects: Subject[] = names.map((name, i) => ({
 const scores = subjects.map((sub, i) => ({
   id: "score" + i, studentId: "l1", subjectId: sub.id, classId: "c9",
   term: 1 as const, academicYear: "2026/2027",
+  sbaRaw: marks[i] * 0.6, examRaw: marks[i],
   sbaScaled: marks[i] * 0.6, examScaled: marks[i] * 0.4, total: marks[i],
   grade: "F", position: 1,
 }));
 const report: ReportCardData = {
   school: {
     id: "school", name: "MOCK SCHOOL", address: "Kumasi",
-    academicYear: "2026/2027", currentTerm: 1, sbaWeight: 60,
+    academicYear: "2026/2027", currentTerm: 1, nextTermBegins: "2027-01-05", sbaWeight: 60,
     examWeight: 40, gradingScale: { id: "default", name: "Other classes", grades: [] },
   },
   student: {
@@ -105,11 +106,14 @@ test("Grade 9 renders sample-style core and aggregate fields on ONE A4 page", ()
   for (const label of [
     "BECE-STYLE SCHOOL MOCK", "FOUR CORE + BEST TWO", "CORE SUBJECT PERFORMANCE",
     "SCHOOL MOCK GRADE SCALE", "NOT an official WAEC", "ATTENDANCE",
-    "HEADTEACHER", "SIGNATURE",
+    "HEADTEACHER", "SIGNATURE", "GENDER", "Male",
+    "NEXT TERM BEGINS", "5 Jan 2027", "EXAM / 100",
   ]) {
     assert.ok(pdf.includes(label), "Missing text: " + label);
   }
   assert.ok(pdf.includes("(12)"), "Correct aggregate 12 should be printed");
+  assert.ok(!pdf.includes("(SBA)"), "Grade 9 printed report must have no SBA column");
+  assert.ok(!pdf.includes("SBA 60%"), "Grade 9 must not use school's shared SBA weight");
   assert.equal(report.scores[0].grade, "F", "Stored mark and grade must not be mutated");
 });
 
@@ -151,7 +155,9 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
       id: student.id + "-" + subject.id,
       school_id: "school", class_id: "c9", student_id: student.id,
       subject_id: subject.id, term: 1, academic_year: "2026/2027",
-      total: i === 1 && subject.name === "Mathematics" ? 78 : marks[n],
+      exam_raw: i === 1 && subject.name === "Mathematics" ? 78 : marks[n],
+      sba_raw: 45, sba_scaled: 22.5, exam_scaled: 33,
+      total: i === 1 && subject.name === "Mathematics" ? 55.5 : marks[n],
     }))),
   } as unknown as Workspace;
   const result = buildClassResultSheet(workspace, "c9");
@@ -169,4 +175,31 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
   assert.ok(older.rows.every((r) => r.aggregate === undefined));
   const olderPdf = exportClassResultsPdf(grade8, "c9", "performance", { download: false }).output();
   assert.ok(!olderPdf.includes("Agg. Pos."));
+});
+
+test("Grade 9 reads original examination values and never reuses old weighted SBA totals", () => {
+  for (const [raw, expected] of [
+    [0, 0], [66, 66], ["78.00", 78], [100, 100], [null, null],
+    [undefined, null], ["", null], [101, null], [-1, null],
+  ] as const) assert.equal(gradeNineExamScore(raw), expected);
+
+  const legacyWeighted = {
+    ...report, scores: [
+      { ...scores[0], examRaw: 66, examScaled: 33, sbaScaled: 22.5, total: 55.5 },
+      { ...scores[1], examRaw: 78, examScaled: 39, sbaScaled: 28, total: 67 },
+    ],
+  };
+  const pdf = generateReportPDF(legacyWeighted, subjects).output();
+  assert.ok(pdf.includes("(66.0)"), "Must print 66/100 rather than weighted 55.5");
+  assert.ok(pdf.includes("(78.0)"), "Must print 78/100 rather than weighted 67");
+  assert.ok(!pdf.includes("(55.5)"));
+  assert.ok(!pdf.includes("(67.0)"));
+});
+
+test("Grade 9 next-term date falls back clearly when the school has not announced it", () => {
+  const doc = generateReportPDF({
+    ...report, school: { ...report.school, nextTermBegins: null },
+  }, subjects);
+  assert.equal(doc.getNumberOfPages(), 1);
+  assert.ok(doc.output().includes("Not yet announced"));
 });
