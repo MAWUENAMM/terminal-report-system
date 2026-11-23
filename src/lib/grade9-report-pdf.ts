@@ -2,7 +2,7 @@ import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
-import { computeGradeNineMock, MANDATORY_CORE, SCHOOL_MOCK_BANDS } from "./grade9-mock";
+import { computeGradeNineMock, gradeNineExamScore, MANDATORY_CORE, SCHOOL_MOCK_BANDS } from "./grade9-mock";
 
 /**
  * Grade 9 ONLY: printable, single-A4-page school mock report in the format
@@ -30,14 +30,14 @@ export function generateGradeNineMockPDF(
   const gray: [number, number, number] = [98, 112, 127];
   const white: [number, number, number] = [255, 255, 255];
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
-  const ordered = [...data.scores].sort((a, b) =>
+  const ordered = [...data.scores].filter(s => gradeNineExamScore(s.examRaw) !== null).sort((a, b) =>
     (subjectMap.get(a.subjectId)?.order ?? 999) -
     (subjectMap.get(b.subjectId)?.order ?? 999),
   );
   const mock = computeGradeNineMock(ordered.map((s) => ({
     subjectId: s.subjectId,
     name: subjectMap.get(s.subjectId)?.name ?? s.subjectId,
-    score: Number(s.total),
+    score: gradeNineExamScore(s.examRaw)!,
     position: s.position,
   })));
   const mockById = new Map(mock.rows.map((r) => [r.subjectId, r]));
@@ -110,8 +110,10 @@ export function generateGradeNineMockPDF(
   bar("CANDIDATE INFORMATION", 48);
   panel(m, 56, W - 2 * m, 24);
   const name = formatName(data.student.firstName, data.student.lastName, data.student.otherNames);
-  field("CANDIDATE", name, m + 4, 62, 91);
-  field("ADMISSION NUMBER", data.student.admissionNumber, m + 105, 62, 75);
+  field("CANDIDATE", name, m + 4, 62, 78);
+  field("ADMISSION NUMBER", data.student.admissionNumber, m + 89, 62, 53);
+  const gender = data.student.gender === "M" ? "Male" : data.student.gender === "F" ? "Female" : "Not recorded";
+  field("GENDER", gender, m + 150, 62, 33);
   field("CLASS", data.class.name, m + 4, 73, 91);
   field("ACADEMIC YEAR / TERM", data.school.academicYear + " / " + data.school.currentTerm, m + 105, 73, 75);
 
@@ -123,9 +125,7 @@ export function generateGradeNineMockPDF(
     const r = mockById.get(s.subjectId);
     return [
       subjectMap.get(s.subjectId)?.name ?? s.subjectId,
-      Number(s.sbaScaled).toFixed(1),
-      Number(s.examScaled).toFixed(1),
-      Number(s.total).toFixed(1),
+      gradeNineExamScore(s.examRaw)!.toFixed(1),
       r?.grade ?? "—",
       r?.point?.toString() ?? "—",
       s.position?.toString() ?? "—",
@@ -134,7 +134,7 @@ export function generateGradeNineMockPDF(
   autoTable(doc, {
     startY: 91,
     head: [[
-      "SUBJECT", "SBA", "EXAM", "SCORE", "GRADE", "POINT", "POS.",
+      "SUBJECT", "EXAM / 100", "GRADE", "POINT", "POS.",
     ]],
     body,
     theme: "grid",
@@ -150,13 +150,11 @@ export function generateGradeNineMockPDF(
     },
     alternateRowStyles: { fillColor: [248, 251, 254] },
     columnStyles: {
-      0: { cellWidth: 65, fontStyle: "bold" },
-      1: { cellWidth: 21, halign: "center" },
-      2: { cellWidth: 21, halign: "center" },
-      3: { cellWidth: 22, halign: "center" },
-      4: { cellWidth: 18, halign: "center", fontStyle: "bold" },
-      5: { cellWidth: 18, halign: "center", fontStyle: "bold" },
-      6: { cellWidth: 25, halign: "center" },
+      0: { cellWidth: 85, fontStyle: "bold" },
+      1: { cellWidth: 35, halign: "center", fontStyle: "bold" },
+      2: { cellWidth: 22, halign: "center", fontStyle: "bold" },
+      3: { cellWidth: 22, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 26, halign: "center" },
     },
     margin: { left: m, right: m },
   });
@@ -214,6 +212,14 @@ export function generateGradeNineMockPDF(
   print("ATTENDANCE", m, below + 4, 7.5, true, blue);
   print(att ? String(att.daysPresent) + " / " + String(att.totalDays) + " days (" + rate + ")" : rate,
     m + 27, below + 4, 7.4, false);
+  // Use the school-configured reopening date. A missing date is not guessed.
+  const nextDate = data.school.nextTermBegins;
+  const parsed = nextDate ? new Date(nextDate + "T12:00:00") : null;
+  const nextTerm = parsed && !Number.isNaN(parsed.getTime())
+    ? parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "Not yet announced";
+  print("NEXT TERM BEGINS", m + 102, below + 4, 7.2, true, blue);
+  print(nextTerm, m + 146, below + 4, fitSize(nextTerm, 40, 7.0, 5.5), true);
   below += 8;
 
   print("REMARKS", m, below + 3, 7.7, true, blue);
