@@ -1,0 +1,46 @@
+name: Grade 9 School Mock Aggregate Preview
+
+on:
+  push:
+    branches:
+      - feature/grade9-bece-style-mock-aggregate-2026-11-23
+  pull_request:
+    paths:
+      - "src/lib/grade9-mock.ts"
+      - "src/lib/grade9-mock-report-pdf.ts"
+      - "src/lib/report-pdf.ts"
+      - "src/lib/reporting.ts"
+      - "src/app/dashboard/scores/**"
+      - "src/app/dashboard/reports/**"
+      - "src/types/index.ts"
+      - "tests/grade9-bece-style-mock.test.ts"
+      - ".github/workflows/grade9-mock.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grade9-mock-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Grade 9 mock aggregate calculations, PDFs and full application build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install pinned packages
+        run: npm ci
+      - name: Run full regression suite
+        run: npm test
+      - name: Lint modified Grade 9 and reporting files
+        run: npx eslint src/lib/grade9-mock.ts src/lib/grade9-mock-report-pdf.ts src/lib/report-pdf.ts src/lib/reporting.ts src/app/dashboard/scores/page.tsx src/app/dashboard/reports/page.tsx tests/grade9-bece-style-mock.test.ts
+      - name: Verify production build and types
+        run: npm run build
