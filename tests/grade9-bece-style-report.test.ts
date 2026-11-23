@@ -5,6 +5,7 @@ import { generateReportPDF } from "../src/lib/report-pdf";
 import type { ReportCardData, Subject } from "../src/types";
 import { buildClassResultSheet } from "../src/lib/class-sheets";
 import { exportClassResultsPdf } from "../src/lib/class-sheet-pdf";
+import { currentSnapshot, reportData } from "../src/lib/reporting";
 import type { Workspace } from "../src/lib/models";
 
 const names = [
@@ -148,6 +149,7 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
   const workspace = {
     school: {
       id: "school", name: "SCHOOL", academic_year: "2026/2027", current_term: 1,
+      sba_weight: 50, exam_weight: 50, sba_input_max: 100,
     },
     classes: [{ id: "c9", school_id: "school", name: "Grade 9", level: "JHS" }],
     students: learners, subjects: subjectList, assignments: [],
@@ -161,6 +163,11 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
     }))),
   } as unknown as Workspace;
   const result = buildClassResultSheet(workspace, "c9");
+  const rawGradeNine = reportData(currentSnapshot(workspace, workspace.students[1])).data;
+  const mathsGradeNine = rawGradeNine.scores.find((score) => score.subjectId === "s5")!;
+  assert.equal(mathsGradeNine.total, 78, "Grade 9 reports use original full exam");
+  assert.equal(mathsGradeNine.examScaled, 78);
+  assert.equal(mathsGradeNine.sbaScaled, 0);
   assert.deepEqual(result.ranked.map((r) => r.aggregate), [12, 13]);
   assert.deepEqual(result.ranked.map((r) => r.position), [1, 2]);
   const pdf = exportClassResultsPdf(workspace, "c9", "ranking", { download: false }).output();
@@ -172,6 +179,10 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
     classes: [{ ...workspace.classes[0], name: "Grade 8" }],
   } as Workspace;
   const older = buildClassResultSheet(grade8, "c9");
+  const oldGradeReport = reportData(currentSnapshot(grade8, grade8.students[1])).data;
+  const oldMaths = oldGradeReport.scores.find((score) => score.subjectId === "s5")!;
+  assert.equal(oldMaths.total, 55.5, "Other classes preserve their previously stored weighted totals");
+  assert.equal(oldMaths.sbaScaled, 22.5);
   assert.ok(older.rows.every((r) => r.aggregate === undefined));
   const olderPdf = exportClassResultsPdf(grade8, "c9", "performance", { download: false }).output();
   assert.ok(!olderPdf.includes("Agg. Pos."));
