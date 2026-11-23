@@ -31,7 +31,7 @@ import {
   latestArchivedTerms, summarizeAcademicTerm, ordinalPosition,
   type ArchivedAcademicTerm,
 } from "@/lib/academic-records";
-import { computePositions, getGrade, getPerformanceRemark } from "@/lib/grading";
+import { computePositions, getPerformanceRemark } from "@/lib/grading";
 import {
   removeStudentPhoto,
   resolveSchoolAssetUrl,
@@ -256,7 +256,7 @@ export default function StudentProfile({ student, onClose }: Props) {
           (!gradeNine || gradeNineExamScore(s.exam_raw) !== null),
       );
       const rank = computePositions(
-        rows.map((s) => ({ studentId: s.student_id, total: markFor(s) })),
+        rows.map((s) => ({ studentId: s.student_id, total: gradeNine ? gradeNineExamScore(s.exam_raw)! : Number(s.total) })),
       ).get(currentStudent.id);
       if (rank) positions.set(subject.id, rank);
     }
