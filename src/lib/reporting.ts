@@ -176,7 +176,9 @@ export function reportData(snapshot: ReportSnapshot): {
       overallGrade: x.scores.length
         ? (gradeNine ? (mockBandFor(average)?.grade ?? "-") : getGrade(average).grade)
         : "-",
-      overallPosition: x.scores.length ? positions.get(s.id) : undefined,
+      overallPosition: x.scores.length
+        ? (gradeNine ? gradeNineMockPositions.get(s.id) : positions.get(s.id))
+        : undefined,
       gradeNineMockPosition: isGradeNineClass(c.name) ? gradeNineMockPositions.get(s.id) ?? null : undefined,
       totalStudents: x.class_students.length,
     },
