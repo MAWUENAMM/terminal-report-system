@@ -3,6 +3,9 @@ import test from "node:test";
 import { computeGradeNineMock, isGradeNineClass, mockBandFor } from "../src/lib/grade9-mock";
 import { generateReportPDF } from "../src/lib/report-pdf";
 import type { ReportCardData, Subject } from "../src/types";
+import { buildClassResultSheet } from "../src/lib/class-sheets";
+import { exportClassResultsPdf } from "../src/lib/class-sheet-pdf";
+import type { Workspace } from "../src/lib/models";
 
 const names = [
   "Career Tech", "Creative Art", "English Language", "French",
@@ -124,4 +127,46 @@ test("Grade 8 and every other class retain the existing terminal report PDF", ()
   const pdf = generateReportPDF(data, subjects).output();
   assert.ok(pdf.includes("TERMINAL REPORT CARD"));
   assert.ok(!pdf.includes("BECE-STYLE SCHOOL MOCK"));
+});
+
+
+test("Grade 9 class sheets use aggregate rank while other classes retain average rank", () => {
+  const learners = [
+    { id: "learner1", school_id: "school", class_id: "c9", admission_number: "JHS001",
+      first_name: "Ama", last_name: "First", gender: "F", status: "ACTIVE" },
+    { id: "learner2", school_id: "school", class_id: "c9", admission_number: "JHS002",
+      first_name: "Kojo", last_name: "Second", gender: "M", status: "ACTIVE" },
+  ];
+  const subjectList = subjects.map((s, i) => ({
+    id: s.id, school_id: "school", name: s.name, level: "JHS",
+    display_order: i, code: s.code, active: true, is_core: s.isCore,
+  }));
+  const workspace = {
+    school: {
+      id: "school", name: "SCHOOL", academic_year: "2026/2027", current_term: 1,
+    },
+    classes: [{ id: "c9", school_id: "school", name: "Grade 9", level: "JHS" }],
+    students: learners, subjects: subjectList, assignments: [],
+    scores: learners.flatMap((student, i) => subjects.map((subject, n) => ({
+      id: student.id + "-" + subject.id,
+      school_id: "school", class_id: "c9", student_id: student.id,
+      subject_id: subject.id, term: 1, academic_year: "2026/2027",
+      total: i === 1 && subject.name === "Mathematics" ? 78 : marks[n],
+    }))),
+  } as unknown as Workspace;
+  const result = buildClassResultSheet(workspace, "c9");
+  assert.deepEqual(result.ranked.map((r) => r.aggregate), [12, 13]);
+  assert.deepEqual(result.ranked.map((r) => r.position), [1, 2]);
+  const pdf = exportClassResultsPdf(workspace, "c9", "ranking", { download: false }).output();
+  assert.ok(pdf.includes("Aggregate"));
+  assert.ok(pdf.includes("Agg. Pos."));
+
+  const grade8 = {
+    ...workspace,
+    classes: [{ ...workspace.classes[0], name: "Grade 8" }],
+  } as Workspace;
+  const older = buildClassResultSheet(grade8, "c9");
+  assert.ok(older.rows.every((r) => r.aggregate === undefined));
+  const olderPdf = exportClassResultsPdf(grade8, "c9", "performance", { download: false }).output();
+  assert.ok(!olderPdf.includes("Agg. Pos."));
 });
