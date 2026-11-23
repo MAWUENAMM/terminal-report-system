@@ -26,6 +26,7 @@ import {
   type Student,
 } from "@/lib/models";
 import { currentSnapshot, downloadReport, reportData } from "@/lib/reporting";
+import { computeGradeNineMock, isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 
 type ReportStatus = {
   key: "ready" | "attention" | "empty";
