@@ -1,4 +1,5 @@
 import { computePositions } from "./grading";
+import { aggregatePositions, computeGradeNineMock, isGradeNineClass } from "./grade9-mock";
 import { fullName, type School, type SchoolClass, type Score, type Student, type Subject, type Workspace } from "./models";
 
 export type NameSort = "az" | "za";
@@ -27,6 +28,8 @@ export type ClassResultRow = {
   bySubject: Map<string, number>;
   total: number | null;
   average: number | null;
+  /** Grade 9 school-mock aggregate (four core + best two), absent for other grades. */
+  aggregate?: number | null;
   subjectCount: number;
   expectedCount: number;
   complete: boolean;
@@ -91,11 +94,22 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
     };
   });
 
-  // Only students with recorded marks can be ranked. Competition ranking:
-  // 1, 2, 2, 4 (ties do not produce arbitrary, contradictory positions).
-  const ranks = computePositions(rows
-    .filter((row) => row.average !== null)
-    .map((row) => ({ studentId: row.student.id, total: row.average! })));
+  // Grade 9 positions follow the six-subject aggregate (lower is better);
+  // other classes retain the original average-based competition ranking.
+  const gradeNine = isGradeNineClass(classGroup.name);
+  const ranks = gradeNine
+    ? aggregatePositions(rows.map((row) => {
+        const mock = computeGradeNineMock([...row.bySubject.entries()].map(([subjectId, score]) => ({
+          subjectId,
+          name: subjects.find((subject) => subject.id === subjectId)?.name ?? "",
+          score,
+        })));
+        row.aggregate = mock.aggregate;
+        return { studentId: row.student.id, aggregate: mock.aggregate };
+      }))
+    : computePositions(rows
+        .filter((row) => row.average !== null)
+        .map((row) => ({ studentId: row.student.id, total: row.average! })));
   for (const row of rows) row.position = ranks.get(row.student.id) ?? null;
   const ranked = [...rows].sort((a, b) =>
     (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER) ||
