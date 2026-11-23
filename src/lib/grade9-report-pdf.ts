@@ -184,7 +184,7 @@ export function generateGradeNineMockPDF(
   const boxW = (leftW - 8) / 3;
   [
     ["AVERAGE", mock.average === null ? "—" : mock.average.toFixed(1) + "%"],
-    ["CLASS POS.", data.overallPosition ? String(data.overallPosition) : "—"],
+    ["AGG. POS.", mock.aggregate !== null && data.gradeNineMockPosition ? String(data.gradeNineMockPosition) : "—"],
     ["TOTAL", mock.total === null ? "—" : mock.total.toFixed(1)],
   ].forEach(([label, value], i) => {
     const x = m + 4 + i * boxW;
