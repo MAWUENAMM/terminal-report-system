@@ -154,7 +154,7 @@ export default function Settings() {
               Set the official total number of days for {w.school.academic_year},
               Term {w.school.current_term}. This applies to all learner reports and
               synchronizes existing attendance records for the current open term.
-              It never fills in or guesses an individual learner's days present.
+              It never fills in or guesses an individual learner’s days present.
             </p>
             <Field label="Total school days (1–366)">
               <input type="number" min={1} max={366} step={1}
@@ -171,7 +171,7 @@ export default function Settings() {
             </Field>
             <p className="mt-2 text-xs text-muted">
               This value clears at the start of the next term. Prior archived reports stay unchanged.
-              Teachers still record each learner's actual days present separately.
+              Teachers still record each learner’s actual days present separately.
             </p>
           </section>
           <section className="surface rounded-2xl p-6">
