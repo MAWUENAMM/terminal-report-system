@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import type { Student, Workspace } from "./models";
 import { fullName } from "./models";
 import { buildClassResultSheet, ordinal } from "./class-sheets";
+import { isGradeNineClass } from "./grade9-mock";
 
 type PDF = InstanceType<typeof jsPDF>;
 type SheetKind = "performance" | "ranking";
@@ -72,6 +73,7 @@ export function exportClassResultsPdf(
   const sheet = buildClassResultSheet(w, classId);
   if (!sheet.rows.length) throw new Error("This class has no active learners to print.");
   const wide = kind === "ranking";
+  const gradeNine = isGradeNineClass(sheet.classGroup.name);
   const doc = new jsPDF({
     orientation: wide ? "landscape" : "portrait",
     unit: "mm",
@@ -84,13 +86,17 @@ export function exportClassResultsPdf(
   if (kind === "performance") {
     autoTable(doc, {
       ...tableTheme(9),
-      head: [["No.", "Full name", "Gender", "Total", "Average", "Position", "Subjects"]],
+      head: [[
+        "No.", "Full name", "Gender", "Total", "Average",
+        ...(gradeNine ? ["Aggregate", "Agg. Pos."] : ["Position"]), "Subjects",
+      ]],
       body: records.map((row, i) => [
         String(i + 1),
         fullName(row.student),
         genderName(row.student.gender),
-        n1(row.total), n1(row.average), ordinal(row.position),
-        `${row.subjectCount}/${row.expectedCount}`,
+        n1(row.total), n1(row.average),
+        ...(gradeNine ? [n1(row.aggregate ?? null)] : []),
+        ordinal(row.position), `${row.subjectCount}/${row.expectedCount}`,
       ]),
       columnStyles: {
         0: { cellWidth: 13 },
@@ -98,8 +104,9 @@ export function exportClassResultsPdf(
         2: { cellWidth: 20 },
         3: { cellWidth: 22, halign: "right" },
         4: { cellWidth: 22, halign: "right" },
-        5: { cellWidth: 23, halign: "center" },
-        6: { cellWidth: 19, halign: "center" },
+        5: { cellWidth: gradeNine ? 21 : 23, halign: "center" },
+        6: { cellWidth: gradeNine ? 23 : 19, halign: "center" },
+        ...(gradeNine ? { 7: { cellWidth: 19, halign: "center" as const } } : {}),
       },
     });
   } else {
@@ -108,16 +115,16 @@ export function exportClassResultsPdf(
     // Never use subject codes here: some schools store numeric codes (1, 2, 3).
     // The school needs the full subject name visible on the printed rank sheet.
     const subjectHeads = sheet.subjects.map((s) => s.name.trim().toUpperCase());
-    const headingRow = ["No.", "Full name", ...subjectHeads, "Total", "Avg.", "Position"];
+    const headingRow = ["No.", "Full name", ...subjectHeads, "Total", "Avg.", ...(gradeNine ? ["Aggregate", "Agg. Pos."] : ["Position"])];
     const tableRows = records.map((row, i) => [
       String(i + 1), fullName(row.student),
       ...sheet.subjects.map((s) => row.bySubject.has(s.id) ? n1(row.bySubject.get(s.id)!) : "-"),
-      n1(row.total), n1(row.average), ordinal(row.position),
+      n1(row.total), n1(row.average), ...(gradeNine ? [n1(row.aggregate ?? null)] : []), ordinal(row.position),
     ]);
     const fontSize = sheet.subjects.length > 11 ? 6.7 : sheet.subjects.length > 7 ? 7.1 : 8;
     const fullWidth = doc.internal.pageSize.getWidth() - 26;
     const nameWidth = sheet.subjects.length > 6 ? 66 : 61;
-    const reservedWidth = 11 + nameWidth + 20 + 18 + 19;
+    const reservedWidth = 11 + nameWidth + 20 + 18 + 19 + (gradeNine ? 20 : 0);
     const perSubject = (fullWidth - reservedWidth) / Math.max(1, sheet.subjects.length);
     if (perSubject < 14) throw new Error("Too many subjects for a legible ranking sheet.");
     const subjectColumnWidths = Object.fromEntries(
@@ -133,7 +140,8 @@ export function exportClassResultsPdf(
         ...subjectColumnWidths,
         [sheet.subjects.length + 2]: { cellWidth: 20, halign: "right" },
         [sheet.subjects.length + 3]: { cellWidth: 18, halign: "right" },
-        [sheet.subjects.length + 4]: { cellWidth: 19, halign: "center" },
+        [sheet.subjects.length + 4]: { cellWidth: gradeNine ? 20 : 19, halign: "center" },
+        ...(gradeNine ? { [sheet.subjects.length + 5]: { cellWidth: 19, halign: "center" as const } } : {}),
       },
       headStyles: {
         ...tableTheme(fontSize).headStyles,
@@ -151,7 +159,9 @@ export function exportClassResultsPdf(
     doc.setPage(i);
     printHeader(doc, w.school.name, heading, subtitle);
   }
-  footers(doc, "Calculated from recorded current-term marks. Equal averages share a position; missing marks are not zero.");
+  footers(doc, gradeNine
+    ? "Grade 9 ranking uses four core plus best two other subjects. Incomplete aggregate is unranked."
+    : "Calculated from recorded current-term marks. Equal averages share a position; missing marks are not zero.");
   if (options.download !== false)
     doc.save(`${cleanFile(w.school.name)}_${cleanFile(sheet.classGroup.name)}_Term${w.school.current_term}_${kind}.pdf`);
   return doc;
