@@ -1,7 +1,6 @@
--- Grade 9 / JHS 3 examination-only grading (100% exam, 0% SBA).
--- Preserves existing school-wide assessment, RLS and term rules for other classes.
--- Commit for separate production review; NO production application in this task.
--- Does NOT backfill historical records. Consumers use original exam_raw.
+-- Grade 9/JHS3: examination only (100%), zero SBA; other grades unchanged.
+-- Preserves term, tenant and authorization checks. No automatic backfill.
+-- Stage only until separately authorized for production.
 
 CREATE OR REPLACE FUNCTION private.validate_record()
  RETURNS trigger
@@ -83,64 +82,11 @@ begin
     select sba_weight,exam_weight,sba_input_max into sb,ex,mx
       from public.schools where id=s;
 
-    -- Grade 9 (JHS 3) is examination only. Ignore any old SBA marks.
-    -- All other classes must retain their existing school-wide SBA/Exam weights.
+    -- Only Grade 9/JHS3 uses examination marks out of 100 with no SBA.
     if exists (
-      select 1
-      from public.classes c
-      where c.id = NEW.class_id and c.school_id = s
-        and btrim(c.name) ~* '^(grade[[:space:]]*0?9|basic[[:space:]]*0?9|jhs[[:space:]-]*3|jhs[[:space:]-]*iii)
-
-  elsif TG_TABLE_NAME='attendance' then
-    if NEW.total_days<0 or NEW.total_days>366
-      or NEW.days_present<0 or NEW.days_present>NEW.total_days then
-      raise exception 'Attendance must be between 0 and total school days.';
-    end if;
-
-  elsif TG_TABLE_NAME='remarks' and auth.uid() is not null then
-    role_name=private.member_role();
-
-    if TG_OP='INSERT' then
-      if role_name not in ('ADMIN','HEADTEACHER')
-        and coalesce(NEW.headteacher_remark,'')<>'' then
-        raise exception 'Only the headmaster or administrator can write headmaster remarks.';
-      end if;
-
-      if role_name='HEADTEACHER'
-        and not private.owns_class(st.class_id)
-        and coalesce(NEW.class_teacher_remark,'')<>'' then
-        raise exception 'Class teacher remarks are managed by the assigned teacher.';
-      end if;
-    else
-      if role_name not in ('ADMIN','HEADTEACHER')
-        and NEW.headteacher_remark is distinct from OLD.headteacher_remark then
-        raise exception 'Headmaster remarks are protected.';
-      end if;
-
-      if role_name='HEADTEACHER'
-        and not private.owns_class(st.class_id)
-        and NEW.class_teacher_remark is distinct from OLD.class_teacher_remark then
-        raise exception 'Class teacher remarks are protected.';
-      end if;
-    end if;
-
-  elsif TG_TABLE_NAME='class_subjects' then
-    select * into cls from public.classes where id=NEW.class_id;
-
-    if not exists(
-      select 1 from public.subjects
-      where id=NEW.subject_id
-        and school_id=NEW.school_id
-        and (level='ALL' or level=cls.level)
-    ) then
-      raise exception 'Subject level must match the class level.';
-    end if;
-  end if;
-
-  return NEW;
-end
-$function$
-
+      select 1 from public.classes c
+      where c.id=NEW.class_id and c.school_id=s
+        and btrim(c.name) ~* '^(grade[[:space:]]*0?9|basic[[:space:]]*0?9|jhs[[:space:]-]*3|jhs[[:space:]-]*iii)$'
     ) then
       if NEW.exam_raw is null or NEW.exam_raw<0 or NEW.exam_raw>100 then
         raise exception 'Grade 9 examination marks must be between 0 and 100.';
