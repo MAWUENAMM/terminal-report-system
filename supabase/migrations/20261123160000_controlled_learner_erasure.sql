@@ -296,3 +296,19 @@ using (
   and name=('schools/'||private.member_school()::text||
     '/students/'||(storage.foldername(name))[4]||'/photo')
 );
+
+
+-- The Storage API may require SELECT along with DELETE during the cleanup
+-- that happens after the relational student record has been removed.
+create policy "school admin reads erased learner photo for removal"
+on storage.objects for select to authenticated
+using (
+  bucket_id='school-assets'
+  and private.member_role()='ADMIN'
+  and (storage.foldername(name))[1]='schools'
+  and (storage.foldername(name))[2]=private.member_school()::text
+  and (storage.foldername(name))[3]='students'
+  and storage.filename(name)='photo'
+  and name=('schools/'||private.member_school()::text||
+    '/students/'||(storage.foldername(name))[4]||'/photo')
+);
