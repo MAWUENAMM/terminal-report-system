@@ -322,6 +322,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
       : "0.0";
     text(`${attendance.daysPresent} / ${attendance.totalDays} days`, margin + 4, y + 12, 8.6, "bold", NAVY);
     text(`${rate}% attendance`, margin + 4, y + 17, 5.6, "normal", MUTED);
+  } else if (school.termTotalDays) {
+    text(`Total school days: ${school.termTotalDays}`, margin + 4, y + 12, 8.1, "bold", NAVY);
+    text("Learner days present: not recorded", margin + 4, y + 17, 6.5, "normal", MUTED);
   } else {
     text("Not recorded", margin + 4, y + 13, 7, "normal", MUTED);
   }
