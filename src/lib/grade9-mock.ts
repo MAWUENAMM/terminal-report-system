@@ -36,6 +36,15 @@ export type MockAggregate = {
 export function isGradeNineClass(name:string):boolean {
   return /^(?:grade\s*0?9|basic\s*0?9|jhs[\s-]*3|jhs[\s-]*iii)$/i.test(name.trim());
 }
+/** Grade 9 has no SBA: a valid examination mark out of 100 is the entire score.
+ * Never fall back to legacy weighted totals, which would mix old SBA marks in. */
+export function gradeNineExamScore(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const score = typeof raw === "number" ? raw
+    : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
+  return Number.isFinite(score) && score >= 0 && score <= 100 ? score : null;
+}
+
 export function mockBandFor(score:number):MockBand|null {
   if(!Number.isFinite(score)||score<0||score>100)return null;
   return SCHOOL_MOCK_BANDS.find(x=>score>=x.min)??null;
