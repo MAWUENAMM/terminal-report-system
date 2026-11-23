@@ -188,8 +188,7 @@ begin
 
   return NEW;
 end
-$function$
-
+$function$;
 
 create or replace function public.admin_permanently_delete_learner(
   p_student_id uuid, p_admission_number text
