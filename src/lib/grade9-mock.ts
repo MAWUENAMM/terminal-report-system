@@ -65,7 +65,7 @@ export function computeGradeNineMock(input:readonly MockSubject[]):MockAggregate
   const bestTwo=extras.slice(0,2);
   const missingElectives=Math.max(0,2-bestTwo.length);
   const complete=missingCore.length===0&&missingElectives===0;
-  const coreRows=MANDATORY_CORE.map(n=>seenCore.get(n)).filter((x):x is MockResult=>Boolean(x)&&!duplicates.has(x.core!));
+  const coreRows=MANDATORY_CORE.map(n=>seenCore.get(n)).filter((x):x is MockResult=>x !== undefined && !duplicates.has(x.core!));
   const coreTotal=missingCore.length?null:coreRows.reduce((n,x)=>n+x.point,0);
   const bestTwoTotal=missingElectives?null:bestTwo.reduce((n,x)=>n+x.point,0);
   if(complete)for(const row of [...coreRows,...bestTwo])row.included=true;
