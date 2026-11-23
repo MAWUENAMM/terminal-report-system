@@ -1,5 +1,7 @@
 import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { isGradeNineClass } from "./grade9-mock";
+import { generateGradeNineMockPDF } from "./grade9-report-pdf";
 import { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
 import { getPerformanceRemark } from "@/lib/grading";
