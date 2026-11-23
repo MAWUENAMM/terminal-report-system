@@ -248,6 +248,15 @@ export default function Reports() {
     }, kind === "performance" ? "Performance sheet PDF downloaded." : "Class rank-position PDF downloaded.");
   }
 
+  async function downloadEveryClassReport() {
+    if (!selectedClass) return;
+    await run(async () => {
+      const { downloadClassReportPack } = await import("@/lib/class-report-pack");
+      const count = await downloadClassReportPack(w, selectedClass.id);
+      if (!count) throw new Error("No learner reports were available.");
+    }, "One combined class PDF downloaded, one A4 page per learner.");
+  }
+
   return (
     <>
       <PageHeader
@@ -387,6 +396,10 @@ export default function Reports() {
               <button className="btn-primary" disabled={busy || !currentRows.length}
                 onClick={() => void downloadClassSheet("ranking")}>
                 <Download className="mr-1.5 inline h-4 w-4" /> New rank positions (PDF)
+              </button>
+              <button className="btn-secondary" disabled={busy || !currentRows.length}
+                onClick={() => void downloadEveryClassReport()}>
+                <Download className="mr-1.5 inline h-4 w-4" /> All learner reports (one PDF)
               </button>
             </div>
           </div>
