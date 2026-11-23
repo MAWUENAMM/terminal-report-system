@@ -1,5 +1,7 @@
 import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { isGradeNineClass } from "./grade9-mock";
+import { generateGradeNineMockPDF } from "./grade9-report-pdf";
 import { ReportCardData, Subject } from "@/types";
 import { formatName } from "@/lib/utils";
 import { getPerformanceRemark } from "@/lib/grading";
@@ -16,6 +18,9 @@ const MUTED: RGB = [91, 105, 116];
 const WHITE: RGB = [255, 255, 255];
 
 export function generateReportPDF(data: ReportCardData, subjects: Subject[], existingDoc?: jsPDF) {
+  // Only Grade 9 gets the new school-mock aggregate format.
+  // All other grades retain the existing report card without any change.
+  if (isGradeNineClass(data.class.name)) return generateGradeNineMockPDF(data, subjects, existingDoc);
   // Existing document mode appends exactly one A4 page for each class learner.
   const doc = existingDoc ?? new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   if (existingDoc) doc.addPage();

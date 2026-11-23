@@ -1,4 +1,5 @@
 import { computePositions } from "./grading";
+import { aggregatePositions, computeGradeNineMock, gradeNineExamScore, isGradeNineClass } from "./grade9-mock";
 import { fullName, type School, type SchoolClass, type Score, type Student, type Subject, type Workspace } from "./models";
 
 export type NameSort = "az" | "za";
@@ -27,6 +28,8 @@ export type ClassResultRow = {
   bySubject: Map<string, number>;
   total: number | null;
   average: number | null;
+  /** Grade 9 school-mock aggregate (four core + best two), absent for other grades. */
+  aggregate?: number | null;
   subjectCount: number;
   expectedCount: number;
   complete: boolean;
@@ -47,6 +50,7 @@ const oneDecimal = (n: number) => Math.round((n + Number.EPSILON) * 10) / 10;
 export function buildClassResultSheet(workspace: Workspace, classId: string): ClassResultSheet {
   const classGroup = workspace.classes.find((c) => c.id === classId && c.school_id === workspace.school.id);
   if (!classGroup) throw new Error("Select a class assigned to this school.");
+  const gradeNine = isGradeNineClass(classGroup.name);
 
   const assigned = new Set(workspace.assignments
     .filter((a) => a.class_id === classId && a.school_id === workspace.school.id)
@@ -75,8 +79,10 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
     const bySubject = new Map<string, number>();
     for (const subject of subjects) {
       const score = scoreIndex.get(`${student.id}:${subject.id}`);
-      const total = Number(score?.total);
-      if (score && Number.isFinite(total) && total >= 0 && total <= 100) bySubject.set(subject.id, total);
+      const total = gradeNine ? gradeNineExamScore(score?.exam_raw) : Number(score?.total);
+      if (score && total !== null && Number.isFinite(total) && total >= 0 && total <= 100) {
+        bySubject.set(subject.id, total);
+      }
     }
     const subjectCount = bySubject.size;
     const total = subjectCount ? [...bySubject.values()].reduce((sum, n) => sum + n, 0) : null;
@@ -91,11 +97,21 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
     };
   });
 
-  // Only students with recorded marks can be ranked. Competition ranking:
-  // 1, 2, 2, 4 (ties do not produce arbitrary, contradictory positions).
-  const ranks = computePositions(rows
-    .filter((row) => row.average !== null)
-    .map((row) => ({ studentId: row.student.id, total: row.average! })));
+  // Grade 9 positions follow the six-subject aggregate (lower is better);
+  // other classes retain the original average-based competition ranking.
+  const ranks = gradeNine
+    ? aggregatePositions(rows.map((row) => {
+        const mock = computeGradeNineMock([...row.bySubject.entries()].map(([subjectId, score]) => ({
+          subjectId,
+          name: subjects.find((subject) => subject.id === subjectId)?.name ?? "",
+          score,
+        })));
+        row.aggregate = mock.aggregate;
+        return { studentId: row.student.id, aggregate: mock.aggregate };
+      }))
+    : computePositions(rows
+        .filter((row) => row.average !== null)
+        .map((row) => ({ studentId: row.student.id, total: row.average! })));
   for (const row of rows) row.position = ranks.get(row.student.id) ?? null;
   const ranked = [...rows].sort((a, b) =>
     (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER) ||

@@ -26,6 +26,7 @@ import {
   type Student,
 } from "@/lib/models";
 import { currentSnapshot, downloadReport, reportData } from "@/lib/reporting";
+import { computeGradeNineMock, isGradeNineClass } from "@/lib/grade9-mock";
 
 type ReportStatus = {
   key: "ready" | "attention" | "empty";
@@ -200,6 +201,14 @@ export default function Reports() {
   const previewSubjectMap = previewBundle
     ? new Map(previewBundle.subjects.map((subject) => [subject.id, subject.name]))
     : new Map<string, string>();
+  const previewGradeNineMock = previewBundle && isGradeNineClass(previewBundle.data.class.name)
+    ? computeGradeNineMock(previewBundle.data.scores.map((score) => ({
+        subjectId: score.subjectId,
+        name: previewSubjectMap.get(score.subjectId) || score.subjectId,
+        score: Number(score.total),
+        position: score.position,
+      })))
+    : null;
 
   function edit(student: Student) {
     const snapshot = currentSnapshot(w, student);
@@ -975,7 +984,7 @@ export default function Reports() {
                   </div>
                 </section>
 
-                <section className="grid grid-cols-3 gap-3">
+                <section className={previewGradeNineMock ? "grid grid-cols-2 gap-3 sm:grid-cols-4" : "grid grid-cols-3 gap-3"}>
                   {[
                     ["Average", `${previewBundle.data.overallAverage.toFixed(1)}%`, Award],
                     ["Grade", previewBundle.data.overallGrade, BookOpen],
@@ -998,6 +1007,15 @@ export default function Reports() {
                       </div>
                     );
                   })}
+                  {previewGradeNineMock && (
+                    <div className="rounded-2xl bg-blue-50 p-4">
+                      <Award className="h-4 w-4 text-blue-500" />
+                      <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-blue-600">Best Six Aggregate</p>
+                      <p className="mt-1 text-lg font-bold text-blue-900">
+                        {previewGradeNineMock.aggregate ?? "Incomplete"}
+                      </p>
+                    </div>
+                  )}
                 </section>
               </div>
 
@@ -1012,10 +1030,11 @@ export default function Reports() {
                       <thead>
                         <tr>
                           <th>Subject</th>
-                          <th>SBA</th>
-                          <th>Exam</th>
-                          <th>Total</th>
+                          {!previewGradeNineMock && <th>SBA</th>}
+                          <th>{previewGradeNineMock ? "Exam (100%)" : "Exam"}</th>
+                          {!previewGradeNineMock && <th>Total</th>}
                           <th>Grade</th>
+                          {previewGradeNineMock && <th>Point</th>}
                           <th>Position</th>
                           <th>Remark</th>
                         </tr>
@@ -1026,10 +1045,13 @@ export default function Reports() {
                             <td className="font-semibold">
                               {previewSubjectMap.get(score.subjectId) || score.subjectId}
                             </td>
-                            <td>{Number(score.sbaScaled).toFixed(1)}</td>
-                            <td>{Number(score.examScaled).toFixed(1)}</td>
-                            <td className="font-semibold">{Number(score.total).toFixed(1)}</td>
+                            {!previewGradeNineMock && <td>{Number(score.sbaScaled).toFixed(1)}</td>}
+                            <td className="font-semibold">{Number(previewGradeNineMock ? score.examRaw : score.examScaled).toFixed(1)}</td>
+                            {!previewGradeNineMock && <td className="font-semibold">{Number(score.total).toFixed(1)}</td>}
                             <td>{score.grade}</td>
+                            {previewGradeNineMock && (
+                              <td>{previewGradeNineMock.rows.find((row) => row.subjectId === score.subjectId)?.point ?? "—"}</td>
+                            )}
                             <td>{score.position || "—"}</td>
                             <td>{score.subjectRemark || "—"}</td>
                           </tr>
@@ -1041,6 +1063,11 @@ export default function Reports() {
                   <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
                     No scores have been recorded for this report.
                   </div>
+                )}
+                {previewGradeNineMock && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Grade 9 school mock: aggregate = English, Mathematics, Science and Social Studies plus the best two other subjects. This is not an official WAEC result.
+                  </p>
                 )}
               </section>
 

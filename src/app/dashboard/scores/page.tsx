@@ -5,6 +5,7 @@ import { PageHeader, Field, Empty } from "@/components/ui";
 import { saveRows } from "@/lib/api";
 import { fullName } from "@/lib/models";
 import { computeTotal } from "@/lib/grading";
+import { isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 import { filterAssessmentStudents, isCompleteMark, markEntryError } from "@/lib/assessment-filters";
 import type { GenderFilter, NameSort } from "@/lib/class-sheets";
 type Draft = { sba_raw: string; exam_raw: string; subject_remark: string };
@@ -21,6 +22,7 @@ export default function Scores() {
     [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const sbaMax = Number(w.school.sba_input_max) || 100;
   const cls = w.classes.find((c) => c.id === classId),
+    gradeNine = isGradeNineClass(cls?.name || ""),
     canAll =
       w.profile.role === "ADMIN" || cls?.class_teacher_id === w.profile.id;
   const assignments = w.assignments.filter(
@@ -88,8 +90,10 @@ export default function Scores() {
     <>
       <PageHeader
         eyebrow="Assessment"
-        title="SBA & examination scores"
-        description={`Term ${w.school.current_term} · ${w.school.academic_year}. Enter SBA marks out of ${sbaMax} and examination marks out of 100. Both scale automatically to ${w.school.sba_weight}% SBA and ${w.school.exam_weight}% examination.`}
+        title={gradeNine ? "Grade 9 examination scores" : "SBA & examination scores"}
+        description={gradeNine
+          ? `Term ${w.school.current_term} · ${w.school.academic_year}. Grade 9 (JHS 3) uses examination marks out of 100 only (100% exam, no SBA).`
+          : `Term ${w.school.current_term} · ${w.school.academic_year}. Enter SBA marks out of ${sbaMax} and examination marks out of 100. Both scale automatically to ${w.school.sba_weight}% SBA and ${w.school.exam_weight}% examination.`}
       />
       <div className="surface grid gap-4 rounded-2xl p-5 sm:grid-cols-2">
         <Field label="Class">
@@ -215,12 +219,14 @@ export default function Scores() {
                 throw new Error("A mark above the permitted maximum was rejected. Correct the highlighted entry before saving.");
               }
               const rows = Object.entries(edits).map(([id, d]) => {
-                if (!isCompleteMark(d.sba_raw, sbaMax, "SBA") ||
+                if ((!gradeNine && !isCompleteMark(d.sba_raw, sbaMax, "SBA")) ||
                     !isCompleteMark(d.exam_raw, 100, "Exam")) {
                   const learner = students.find((s) => s.id === id);
-                  throw new Error(`Enter valid SBA (0–${sbaMax}) and Exam (0–100) marks for ${learner ? fullName(learner) : "this learner"}.`);
+                  throw new Error(gradeNine
+                    ? `Enter a valid examination mark (0–100) for ${learner ? fullName(learner) : "this learner"}.`
+                    : `Enter valid SBA (0–${sbaMax}) and Exam (0–100) marks for ${learner ? fullName(learner) : "this learner"}.`);
                 }
-                const a = Number(d.sba_raw),
+                const a = gradeNine ? 0 : Number(d.sba_raw),
                   b = Number(d.exam_raw);
                 if (
                   !Number.isFinite(a) ||
@@ -259,8 +265,8 @@ export default function Scores() {
               <thead>
                 <tr>
                   <th>Learner</th>
-                  <th>SBA / {sbaMax} → {w.school.sba_weight}%</th>
-                  <th>Exam / 100 → {w.school.exam_weight}%</th>
+                  {!gradeNine && <th>SBA / {sbaMax} → {w.school.sba_weight}%</th>}
+                  <th>{gradeNine ? "Examination / 100 (100%)" : `Exam / 100 → ${w.school.exam_weight}%`}</th>
                   <th>Weighted total</th>
                   <th>Grade</th>
                   <th>Subject remark</th>
@@ -268,23 +274,29 @@ export default function Scores() {
               </thead>
               <tbody>
                 {!visibleStudents.length && (
-                  <tr><td colSpan={6} className="py-8 text-center text-muted">
+                  <tr><td colSpan={gradeNine ? 5 : 6} className="py-8 text-center text-muted">
                     No learners match these filters. Change the search, gender, or starting letter.
                   </td></tr>
                 )}
                 {visibleStudents.map((s) => {
                   const d = draftFor(s.id),
-                    computed =
-                      isCompleteMark(d.sba_raw, sbaMax, "SBA") &&
-                      isCompleteMark(d.exam_raw, 100, "Exam")
-                        ? computeTotal(
-                            Number(d.sba_raw),
-                            sbaMax,
-                            Number(d.exam_raw),
-                            100,
-                            Number(w.school.sba_weight),
-                            Number(w.school.exam_weight),
-                          )
+                    computed = isCompleteMark(d.exam_raw, 100, "Exam") &&
+                      (gradeNine || isCompleteMark(d.sba_raw, sbaMax, "SBA"))
+                        ? gradeNine
+                          ? {
+                              sbaScaled: 0,
+                              examScaled: Number(d.exam_raw),
+                              total: Number(d.exam_raw),
+                              grade: mockBandFor(Number(d.exam_raw))?.grade ?? "-",
+                            }
+                          : computeTotal(
+                              Number(d.sba_raw),
+                              sbaMax,
+                              Number(d.exam_raw),
+                              100,
+                              Number(w.school.sba_weight),
+                              Number(w.school.exam_weight),
+                            )
                         : null;
                   return (
                     <tr key={s.id}>
@@ -296,7 +308,7 @@ export default function Scores() {
                           {s.admission_number}
                         </div>
                       </td>
-                      <td>
+                      {!gradeNine && <td>
                         <input
                           aria-label={`SBA for ${fullName(s)}`}
                           disabled={!open}
@@ -321,7 +333,7 @@ export default function Scores() {
                         <span className="mt-1 block text-xs text-muted">
                           {computed ? `${computed.sbaScaled.toFixed(2)} / ${w.school.sba_weight} scaled` : `Max ${sbaMax}`}
                         </span>
-                      </td>
+                      </td>}
                       <td>
                         <input
                           aria-label={`Exam for ${fullName(s)}`}
@@ -345,13 +357,19 @@ export default function Scores() {
                           </p>
                         )}
                         <span className="mt-1 block text-xs text-muted">
-                          {computed ? `${computed.examScaled.toFixed(2)} / ${w.school.exam_weight} scaled` : "Max 100"}
+                          {computed
+                            ? (gradeNine
+                              ? `${computed.examScaled.toFixed(2)} / 100 (100% exam)`
+                              : `${computed.examScaled.toFixed(2)} / ${w.school.exam_weight} scaled`)
+                            : "Max 100"}
                         </span>
                       </td>
                       <td className="font-semibold tabular-nums">
                         {computed?.total.toFixed(2) || "—"}
                       </td>
-                      <td>{computed?.grade || "—"}</td>
+                      <td>{computed ? (isGradeNineClass(cls?.name || "")
+                        ? `${mockBandFor(computed.total)?.grade ?? "—"} (${mockBandFor(computed.total)?.point ?? "—"})`
+                        : computed.grade) : "—"}</td>
                       <td>
                         <input
                           aria-label={`Remark for ${fullName(s)}`}

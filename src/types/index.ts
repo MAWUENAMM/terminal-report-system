@@ -154,6 +154,8 @@ export interface ReportCardData {
   overallAverage: number;
   overallGrade: string;
   overallPosition?: number;
+  /** School mock aggregate rank for Grade 9; not an official WAEC rank. */
+  gradeNineMockPosition?: number | null;
   totalStudents: number;
   promotedTo?: string;
 }

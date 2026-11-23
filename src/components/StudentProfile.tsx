@@ -24,13 +24,14 @@ import RemarkPresetSelect from "@/components/RemarkPresetSelect";
 import type { RemarkCategory } from "@/lib/remark-options";
 import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
-import { currentSnapshot, downloadReport } from "@/lib/reporting";
+import { currentSnapshot, downloadReport, reportData } from "@/lib/reporting";
+import { gradeNineExamScore, isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 import { fullName, isLeader, type Student, type ReportSnapshot } from "@/lib/models";
 import {
   latestArchivedTerms, summarizeAcademicTerm, ordinalPosition,
   type ArchivedAcademicTerm,
 } from "@/lib/academic-records";
-import { computePositions, getGrade, getPerformanceRemark } from "@/lib/grading";
+import { computePositions, getPerformanceRemark } from "@/lib/grading";
 import {
   removeStudentPhoto,
   resolveSchoolAssetUrl,
@@ -228,33 +229,21 @@ export default function StudentProfile({ student, onClose }: Props) {
     }finally{setGeneratingTranscript(false);}
   }
 
-  const scoreRows = [...snapshot.scores].sort((a, b) => {
-    const ao = w.subjects.find((s) => s.id === a.subject_id)?.display_order ?? 999;
-    const bo = w.subjects.find((s) => s.id === b.subject_id)?.display_order ?? 999;
-    return ao - bo;
-  });
-  const average = snapshot.scores.length
-    ? snapshot.scores.reduce((sum, s) => sum + Number(s.total), 0) / snapshot.scores.length
-    : 0;
-  const classAverages = useMemo(
-    () =>
-      snapshot.class_students.map((classStudent) => {
-        const scores = snapshot.class_scores.filter((score) => score.student_id === classStudent.id);
-        return {
-          studentId: classStudent.id,
-          total: scores.length
-            ? scores.reduce((sum, score) => sum + Number(score.total), 0) / scores.length
-            : 0,
-        };
-      }),
-    [snapshot.class_scores, snapshot.class_students],
-  );
-  const overallPosition = useMemo(
-    () => computePositions(classAverages).get(currentStudent.id),
-    [classAverages, currentStudent.id],
-  );
+  const gradeNine = isGradeNineClass(snapshot.class.name);
+  const profileReport = reportData(snapshot).data;
+  const scoreRows = [...snapshot.scores]
+    .filter(s => !gradeNine || gradeNineExamScore(s.exam_raw) !== null)
+    .sort((a, b) => {
+      const ao = w.subjects.find((s) => s.id === a.subject_id)?.display_order ?? 999;
+      const bo = w.subjects.find((s) => s.id === b.subject_id)?.display_order ?? 999;
+      return ao - bo;
+    });
+  const markFor = (s: { exam_raw: unknown; total: unknown }) =>
+    gradeNine ? gradeNineExamScore(s.exam_raw)! : Number(s.total);
+  const average = profileReport.overallAverage;
+  const overallPosition = profileReport.overallPosition;
   const totalStudents = snapshot.class_students.length;
-  const overallGrade = snapshot.scores.length ? getGrade(average).grade : "—";
+  const overallGrade = scoreRows.length ? profileReport.overallGrade : "—";
   const subjectPositions = useMemo(() => {
     const positions = new Map<string, number>();
     for (const subject of w.subjects) {
@@ -263,15 +252,16 @@ export default function StudentProfile({ student, onClose }: Props) {
           s.class_id === currentStudent.class_id &&
           s.subject_id === subject.id &&
           s.academic_year === w.school.academic_year &&
-          s.term === w.school.current_term,
+          s.term === w.school.current_term &&
+          (!gradeNine || gradeNineExamScore(s.exam_raw) !== null),
       );
       const rank = computePositions(
-        rows.map((s) => ({ studentId: s.student_id, total: Number(s.total) })),
+        rows.map((s) => ({ studentId: s.student_id, total: gradeNine ? gradeNineExamScore(s.exam_raw)! : Number(s.total) })),
       ).get(currentStudent.id);
       if (rank) positions.set(subject.id, rank);
     }
     return positions;
-  }, [currentStudent.class_id, currentStudent.id, w.school.academic_year, w.school.current_term, w.scores, w.subjects]);
+  }, [currentStudent.class_id, currentStudent.id, gradeNine, w.school.academic_year, w.school.current_term, w.scores, w.subjects]);
 
   return (
     <Modal title={`Student profile · ${fullName(currentStudent)}`} onClose={onClose} size="wide">
@@ -436,20 +426,22 @@ export default function StudentProfile({ student, onClose }: Props) {
                     <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Current term</p><h3 className="mt-1 text-lg font-bold">{termLabel(w.school.current_term)} results</h3></div><div className="text-right"><p className="text-xs text-slate-400">Overall grade</p><p className="text-2xl font-black text-slate-900">{overallGrade}</p></div></div>
                     <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
                       <table className="w-full min-w-[680px] text-sm">
-                        <thead className="bg-slate-900 text-left text-[10px] uppercase tracking-[0.12em] text-white"><tr><th className="px-4 py-3">Subject</th><th className="px-4 py-3 text-center">SBA {w.school.sba_weight}%</th><th className="px-4 py-3 text-center">Exam {w.school.exam_weight}%</th><th className="px-4 py-3 text-center">Total</th><th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th><th className="px-4 py-3">Remark</th></tr></thead>
+                        <thead className="bg-slate-900 text-left text-[10px] uppercase tracking-[0.12em] text-white"><tr><th className="px-4 py-3">Subject</th>{!gradeNine && <th className="px-4 py-3 text-center">SBA {w.school.sba_weight}%</th>}<th className="px-4 py-3 text-center">{gradeNine ? "Exam (100%)" : `Exam ${w.school.exam_weight}%`}</th>{!gradeNine && <th className="px-4 py-3 text-center">Total</th>}<th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th><th className="px-4 py-3">Remark</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {scoreRows.length ? scoreRows.map((score) => {
                             const subject = w.subjects.find((s) => s.id === score.subject_id);
-                            const total = Number(score.total);
-                            const remark = score.subject_remark || getPerformanceRemark(total);
-                            return <tr key={score.id}><td className="px-4 py-3 font-semibold text-slate-800">{subject?.name || "Subject"}</td><td className="px-4 py-3 text-center">{Number(score.sba_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center">{Number(score.exam_scaled).toFixed(1)}</td><td className="px-4 py-3 text-center font-black text-red-600">{total.toFixed(1)}</td><td className="px-4 py-3 text-center font-bold">{score.grade}</td><td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span></td></tr>;
-                          }) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>}
+                            const total = markFor(score);
+                            const remark = gradeNine ? getPerformanceRemark(total)
+                              : (score.subject_remark || getPerformanceRemark(total));
+                            const grade = gradeNine ? (mockBandFor(total)?.grade ?? "—") : score.grade;
+                            return <tr key={score.id}><td className="px-4 py-3 font-semibold text-slate-800">{subject?.name || "Subject"}</td>{!gradeNine && <td className="px-4 py-3 text-center">{Number(score.sba_scaled).toFixed(1)}</td>}<td className="px-4 py-3 text-center font-semibold">{(gradeNine ? total : Number(score.exam_scaled)).toFixed(1)}</td>{!gradeNine && <td className="px-4 py-3 text-center font-black text-red-600">{total.toFixed(1)}</td>}<td className="px-4 py-3 text-center font-bold">{grade}</td><td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span></td></tr>;
+                          }) : <tr><td colSpan={gradeNine ? 5 : 7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>}
                         </tbody>
                       </table>
                     </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-3">
-                    {[["Total score", snapshot.scores.reduce((n, s) => n + Number(s.total), 0).toFixed(1)], ["Average", snapshot.scores.length ? `${average.toFixed(1)}%` : "—"], ["Class position", overallPosition ? `${overallPosition} of ${totalStudents}` : "—"]].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-2 text-xl font-black text-slate-900">{value}</p></div>)}
+                    {[["Total score", scoreRows.reduce((n, s) => n + markFor(s), 0).toFixed(1)], ["Average", scoreRows.length ? `${average.toFixed(1)}%` : "—"], [gradeNine ? "Aggregate position" : "Class position", overallPosition ? `${overallPosition} of ${totalStudents}` : "—"]].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-2 text-xl font-black text-slate-900">{value}</p></div>)}
                   </div>
                 </div>
               )}
