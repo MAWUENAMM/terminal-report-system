@@ -26,11 +26,11 @@ begin
   then
     if tg_op='DELETE' and old.student_id::text=erase_id then return old; end if;
     if tg_op='UPDATE' and new.id=old.id and new.student_id=old.student_id
-      and new.snapshot->'student'=old.snapshot->'student'
-      and new.snapshot->'scores'=old.snapshot->'scores'
-      and new.snapshot->'attendance'=old.snapshot->'attendance'
-      and new.snapshot->'affective'=old.snapshot->'affective'
-      and new.snapshot->'remarks'=old.snapshot->'remarks'
+      and new.snapshot->'student' is not distinct from old.snapshot->'student'
+      and new.snapshot->'scores' is not distinct from old.snapshot->'scores'
+      and new.snapshot->'attendance' is not distinct from old.snapshot->'attendance'
+      and new.snapshot->'affective' is not distinct from old.snapshot->'affective'
+      and new.snapshot->'remarks' is not distinct from old.snapshot->'remarks'
     then return new; end if;
   end if;
   raise exception 'Archived term reports are immutable outside the authorized learner-erasure workflow.';
