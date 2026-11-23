@@ -39,6 +39,7 @@ export interface School {
   current_term: number;
   sba_input_max: number;
   next_term_begins?: string | null;
+  term_total_days?: number | null;
   sba_weight: number;
   exam_weight: number;
 }
