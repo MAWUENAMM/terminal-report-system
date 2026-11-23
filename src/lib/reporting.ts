@@ -1,6 +1,7 @@
 import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
 import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
+import { aggregatePositions, computeGradeNineMock, isGradeNineClass } from "./grade9-mock";
 export function currentSnapshot(
   w: Workspace,
   student: Student,
@@ -50,6 +51,17 @@ export function reportData(snapshot: ReportSnapshot): {
     return [{ studentId: student.id, total: Math.round(mean * 10) / 10 }];
   });
   const positions = computePositions(averages);
+  const gradeNineMockPositions = isGradeNineClass(c.name)
+    ? aggregatePositions(x.class_students.map(student => {
+        const marked = x.class_scores.filter(score => score.student_id === student.id)
+          .map(score => ({
+            subjectId: score.subject_id,
+            name: x.subjects.find(subject => subject.id === score.subject_id)?.name ?? "",
+            score: Number(score.total),
+          }));
+        return { studentId: student.id, aggregate: computeGradeNineMock(marked).aggregate };
+      }))
+    : new Map<string, number>();
   const subjects = x.subjects.map((s) => ({
     id: s.id,
     name: s.name,
@@ -162,6 +174,7 @@ export function reportData(snapshot: ReportSnapshot): {
       overallAverage: Math.round(average * 100) / 100,
       overallGrade: x.scores.length ? getGrade(average).grade : "-",
       overallPosition: x.scores.length ? positions.get(s.id) : undefined,
+      gradeNineMockPosition: isGradeNineClass(c.name) ? gradeNineMockPositions.get(s.id) ?? null : undefined,
       totalStudents: x.class_students.length,
     },
   };
