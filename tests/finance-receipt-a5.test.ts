@@ -16,7 +16,7 @@ const school = {
 const student = {
   id: "student", school_id: "ark",
   first_name: "ADADE", other_names: "APPIAH", last_name: "PRINCE",
-  admission_number: "ARK136", photo_url: null,
+  admission_number: "ARK136", photo_url: undefined,
   gender: "M", class_id: "grade4", status: "ACTIVE",
 } as Student;
 const cls = { id: "grade4", name: "GRADE 4" } as SchoolClass;
