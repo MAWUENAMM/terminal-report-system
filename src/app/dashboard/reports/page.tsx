@@ -201,6 +201,14 @@ export default function Reports() {
   const previewSubjectMap = previewBundle
     ? new Map(previewBundle.subjects.map((subject) => [subject.id, subject.name]))
     : new Map<string, string>();
+  const previewGradeNineMock = previewBundle && isGradeNineClass(previewBundle.data.class.name)
+    ? computeGradeNineMock(previewBundle.data.scores.map(score => ({
+        subjectId: score.subjectId,
+        name: previewSubjectMap.get(score.subjectId) || "",
+        score: Number(score.total),
+        position: score.position,
+      })))
+    : null;
 
   function edit(student: Student) {
     const snapshot = currentSnapshot(w, student);
@@ -979,11 +987,13 @@ export default function Reports() {
                 <section className="grid grid-cols-3 gap-3">
                   {[
                     ["Average", `${previewBundle.data.overallAverage.toFixed(1)}%`, Award],
-                    ["Grade", previewBundle.data.overallGrade, BookOpen],
+                    [previewGradeNineMock ? "Mock Aggregate" : "Grade",
+                      previewGradeNineMock ? (previewGradeNineMock.aggregate ?? "Pending") : previewBundle.data.overallGrade,
+                      BookOpen],
                     [
                       "Position",
-                      previewBundle.data.overallPosition
-                        ? `${previewBundle.data.overallPosition}/${previewBundle.data.totalStudents}`
+                      (previewGradeNineMock ? previewBundle.data.gradeNineMockPosition : previewBundle.data.overallPosition)
+                        ? `${previewGradeNineMock ? previewBundle.data.gradeNineMockPosition : previewBundle.data.overallPosition}/${previewBundle.data.totalStudents}`
                         : "—",
                       GraduationCap,
                     ],
@@ -1003,6 +1013,20 @@ export default function Reports() {
               </div>
 
               <section>
+                {previewGradeNineMock && (
+                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <p className="font-semibold text-blue-900">Grade 9 school mock aggregate</p>
+                    <p className="mt-1 text-sm text-blue-950">
+                      Four mandatory core subjects plus the best two remaining subjects.
+                      {previewGradeNineMock.aggregate === null
+                        ? ` Awaiting complete marks. Missing core: ${previewGradeNineMock.missingCore.join(", ") || "none"}; additional subjects needed: ${previewGradeNineMock.missingElectives}.`
+                        : ` Aggregate: ${previewGradeNineMock.aggregate}. Core points: ${previewGradeNineMock.coreTotal}; best two: ${previewGradeNineMock.bestTwoTotal}.`}
+                    </p>
+                    <p className="mt-2 text-xs text-blue-800">
+                      Uses the supplied A–E mock scale. This is not an official WAEC 1–9 grade or BECE result.
+                    </p>
+                  </div>
+                )}
                 <div className="mb-3 flex items-center gap-2">
                   <BookOpen className="h-5 w-5 text-emerald-700" />
                   <h4 className="font-bold text-slate-900">Academic results</h4>
@@ -1016,7 +1040,8 @@ export default function Reports() {
                           <th>SBA</th>
                           <th>Exam</th>
                           <th>Total</th>
-                          <th>Grade</th>
+                          <th>{previewGradeNineMock ? "Mock Grade" : "Grade"}</th>
+                          {previewGradeNineMock && <th>Point</th>}
                           <th>Position</th>
                           <th>Remark</th>
                         </tr>
@@ -1030,7 +1055,8 @@ export default function Reports() {
                             <td>{Number(score.sbaScaled).toFixed(1)}</td>
                             <td>{Number(score.examScaled).toFixed(1)}</td>
                             <td className="font-semibold">{Number(score.total).toFixed(1)}</td>
-                            <td>{score.grade}</td>
+                            <td>{previewGradeNineMock ? (mockBandFor(Number(score.total))?.grade ?? "—") : score.grade}</td>
+                            {previewGradeNineMock && <td>{mockBandFor(Number(score.total))?.point ?? "—"}</td>}
                             <td>{score.position || "—"}</td>
                             <td>{score.subjectRemark || "—"}</td>
                           </tr>
