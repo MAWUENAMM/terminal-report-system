@@ -153,6 +153,7 @@ test("Grade 9 class sheets use aggregate rank while other classes retain average
     },
     classes: [{ id: "c9", school_id: "school", name: "Grade 9", level: "JHS" }],
     students: learners, subjects: subjectList, assignments: [],
+    attendance: [], affective: [], remarks: [],
     scores: learners.flatMap((student, i) => subjects.map((subject, n) => ({
       id: student.id + "-" + subject.id,
       school_id: "school", class_id: "c9", student_id: student.id,
