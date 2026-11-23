@@ -311,9 +311,14 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
   }
   y = ((doc as any).lastAutoTable?.finalY || y) + 2;
 
-  room(compact ? 20 : 24);
+  // Each panel has a heading and TWO content rows. The previous compact
+  // 19 mm box placed the second Learner Development row outside its border,
+  // on top of the following REMARKS heading. 28 mm reserves a full final
+  // baseline plus comfortable bottom padding without overflowing A4.
+  const infoHeight = 28;
+  const infoGapAfter = 5;
+  room(infoHeight + infoGapAfter);
   const half = (contentWidth - 4) / 2;
-  const infoHeight = compact ? 19 : 21;
   outlineRect(margin, y, half, infoHeight, LINE, 2);
   text("ATTENDANCE", margin + 4, y + 6.2, 7.3, "bold", GREEN);
   if (attendance) {
@@ -347,7 +352,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
     const display = value || "—";
     text(display, x + 15, top, fit(display, half / 2 - 18, 6.5, 5.2), "normal", NAVY);
   });
-  y += infoHeight + 2;
+  // Keep remarks entirely below BOTH panels, not merely below the first line
+  // of attendance. This applies equally to short and long subject tables.
+  y += infoHeight + infoGapAfter;
 
   room(compact ? 30 : 37);
   text("REMARKS", margin, y, 8.7, "bold", GREEN);
