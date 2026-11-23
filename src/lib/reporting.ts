@@ -1,7 +1,7 @@
 import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
 import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
-import { aggregatePositions, computeGradeNineMock, isGradeNineClass, mockBandFor } from "./grade9-mock";
+import { aggregatePositions, computeGradeNineMock, gradeNineExamScore, isGradeNineClass, mockBandFor } from "./grade9-mock";
 export function currentSnapshot(
   w: Workspace,
   student: Student,
@@ -40,25 +40,32 @@ export function reportData(snapshot: ReportSnapshot): {
     sch = x.school,
     c = x.class;
   const gradeNine = isGradeNineClass(c.name);
-  const average = x.scores.length
-    ? x.scores.reduce((sum, s) => sum + Number(s.total), 0) / x.scores.length
+  const currentScores = gradeNine
+    ? x.scores.filter(score => gradeNineExamScore(score.exam_raw) !== null)
+    : x.scores;
+  const markFor = (score: { exam_raw: unknown; total: unknown }) =>
+    gradeNine ? gradeNineExamScore(score.exam_raw)! : Number(score.total);
+  const average = currentScores.length
+    ? currentScores.reduce((sum, score) => sum + markFor(score), 0) / currentScores.length
     : 0;
   // Unscored learners must not be ranked as if they received zero.
   // Rank on the same one-decimal averages printed on the class sheets.
   const averages = x.class_students.flatMap((student) => {
-    const scores = x.class_scores.filter((sc) => sc.student_id === student.id);
+    const scores = x.class_scores.filter((sc) =>
+      sc.student_id === student.id && (!gradeNine || gradeNineExamScore(sc.exam_raw) !== null));
     if (!scores.length) return [];
-    const mean = scores.reduce((n, sc) => n + Number(sc.total), 0) / scores.length;
+    const mean = scores.reduce((n, sc) => n + markFor(sc), 0) / scores.length;
     return [{ studentId: student.id, total: Math.round(mean * 10) / 10 }];
   });
   const positions = computePositions(averages);
   const gradeNineMockPositions = isGradeNineClass(c.name)
     ? aggregatePositions(x.class_students.map(student => {
-        const marked = x.class_scores.filter(score => score.student_id === student.id)
+        const marked = x.class_scores
+          .filter(score => score.student_id === student.id && gradeNineExamScore(score.exam_raw) !== null)
           .map(score => ({
             subjectId: score.subject_id,
             name: x.subjects.find(subject => subject.id === score.subject_id)?.name ?? "",
-            score: Number(score.total),
+            score: gradeNineExamScore(score.exam_raw)!,
           }));
         return { studentId: student.id, aggregate: computeGradeNineMock(marked).aggregate };
       }))
@@ -117,26 +124,28 @@ export function reportData(snapshot: ReportSnapshot): {
         level: c.level,
         academicYear: sch.academic_year,
       },
-      scores: x.scores.map((sc) => ({
+      scores: currentScores.map((sc) => ({
         id: sc.id,
         studentId: sc.student_id,
         subjectId: sc.subject_id,
         classId: sc.class_id,
         term: sc.term as 1 | 2 | 3,
         academicYear: sc.academic_year,
-        sbaRaw: Number(sc.sba_raw),
+        sbaRaw: gradeNine ? 0 : Number(sc.sba_raw),
         examRaw: Number(sc.exam_raw),
-        sbaScaled: Number(sc.sba_scaled),
-        examScaled: Number(sc.exam_scaled),
-        total: Number(sc.total),
-        grade: gradeNine ? (mockBandFor(Number(sc.total))?.grade ?? "-") : sc.grade,
-        subjectRemark: sc.subject_remark || getPerformanceRemark(Number(sc.total)),
+        sbaScaled: gradeNine ? 0 : Number(sc.sba_scaled),
+        examScaled: gradeNine ? markFor(sc) : Number(sc.exam_scaled),
+        total: markFor(sc),
+        grade: gradeNine ? (mockBandFor(markFor(sc))?.grade ?? "-") : sc.grade,
+        subjectRemark: gradeNine ? getPerformanceRemark(markFor(sc))
+          : (sc.subject_remark || getPerformanceRemark(Number(sc.total))),
         position: computePositions(
           x.class_scores
-            .filter((other) => other.subject_id === sc.subject_id)
+            .filter((other) =>
+              other.subject_id === sc.subject_id && (!gradeNine || gradeNineExamScore(other.exam_raw) !== null))
             .map((other) => ({
               studentId: other.student_id,
-              total: Number(other.total),
+              total: markFor(other),
             })),
         ).get(sc.student_id),
       })),
@@ -173,10 +182,10 @@ export function reportData(snapshot: ReportSnapshot): {
           }
         : undefined,
       overallAverage: Math.round(average * 100) / 100,
-      overallGrade: x.scores.length
+      overallGrade: currentScores.length
         ? (gradeNine ? (mockBandFor(average)?.grade ?? "-") : getGrade(average).grade)
         : "-",
-      overallPosition: x.scores.length
+      overallPosition: currentScores.length
         ? (gradeNine ? gradeNineMockPositions.get(s.id) : positions.get(s.id))
         : undefined,
       gradeNineMockPosition: isGradeNineClass(c.name) ? gradeNineMockPositions.get(s.id) ?? null : undefined,
