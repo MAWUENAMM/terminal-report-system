@@ -74,7 +74,7 @@ export function exportClassResultsPdf(
   const doc = new jsPDF({
     orientation: wide ? "landscape" : "portrait",
     unit: "mm",
-    format: wide && sheet.subjects.length > 8 ? "a3" : "a4",
+    format: wide && sheet.subjects.length > 6 ? "a3" : "a4",
   });
   const subtitle = `${sheet.classGroup.name} | ${w.school.academic_year} | Term ${w.school.current_term} | ${sheet.rows.length} learners`;
   const heading = kind === "performance" ? "CLASS PERFORMANCE SHEET" : "CLASS RANK POSITIONS & SUBJECT MARKS";
@@ -104,23 +104,44 @@ export function exportClassResultsPdf(
   } else {
     // A3 landscape for wide class sheets keeps every subject visible and legible.
     // Missing marks appear as "-", never as zero; a genuine score of zero stays "0.0".
-    const subjectHeads = sheet.subjects.map((s) => (s.code?.trim() || s.name.slice(0, 5)).toUpperCase());
+    // Never use subject codes here: some schools store numeric codes (1, 2, 3).
+    // The school needs the full subject name visible on the printed rank sheet.
+    const subjectHeads = sheet.subjects.map((s) => s.name.trim().toUpperCase());
     const headingRow = ["No.", "Full name", ...subjectHeads, "Total", "Avg.", "Position"];
     const tableRows = records.map((row, i) => [
       String(i + 1), fullName(row.student),
       ...sheet.subjects.map((s) => row.bySubject.has(s.id) ? n1(row.bySubject.get(s.id)!) : "-"),
       n1(row.total), n1(row.average), ordinal(row.position),
     ]);
-    const fontSize = sheet.subjects.length > 11 ? 6.8 : sheet.subjects.length > 7 ? 7.5 : 8.5;
+    const fontSize = sheet.subjects.length > 11 ? 6.7 : sheet.subjects.length > 7 ? 7.1 : 8;
+    const fullWidth = doc.internal.pageSize.getWidth() - 26;
+    const nameWidth = sheet.subjects.length > 6 ? 66 : 61;
+    const reservedWidth = 11 + nameWidth + 20 + 18 + 19;
+    const perSubject = (fullWidth - reservedWidth) / Math.max(1, sheet.subjects.length);
+    if (perSubject < 14) throw new Error("Too many subjects for a legible ranking sheet.");
+    const subjectColumnWidths = Object.fromEntries(
+      sheet.subjects.map((_, index) => [index + 2, { cellWidth: perSubject, halign: "center" as const }]),
+    );
     autoTable(doc, {
       ...tableTheme(fontSize),
       head: [headingRow],
       body: tableRows,
       columnStyles: {
         0: { cellWidth: 11 },
-        1: { cellWidth: sheet.subjects.length > 7 ? 50 : 62 },
+        1: { cellWidth: nameWidth },
+        ...subjectColumnWidths,
+        [sheet.subjects.length + 2]: { cellWidth: 20, halign: "right" },
+        [sheet.subjects.length + 3]: { cellWidth: 18, halign: "right" },
+        [sheet.subjects.length + 4]: { cellWidth: 19, halign: "center" },
       },
-      styles: { ...tableTheme(fontSize).styles, cellPadding: 2.2, overflow: "linebreak" },
+      headStyles: {
+        ...tableTheme(fontSize).headStyles,
+        fontSize: Math.min(7.5, fontSize),
+        minCellHeight: 12,
+        overflow: "linebreak",
+        valign: "middle",
+      },
+      styles: { ...tableTheme(fontSize).styles, cellPadding: 1.7, overflow: "linebreak" },
     });
   }
 
