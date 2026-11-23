@@ -67,7 +67,8 @@ export function exportClassResultsPdf(
   w: Workspace,
   classId: string,
   kind: SheetKind,
-): void {
+  options: { download?: boolean } = {},
+): PDF {
   const sheet = buildClassResultSheet(w, classId);
   if (!sheet.rows.length) throw new Error("This class has no active learners to print.");
   const wide = kind === "ranking";
@@ -151,7 +152,9 @@ export function exportClassResultsPdf(
     printHeader(doc, w.school.name, heading, subtitle);
   }
   footers(doc, "Calculated from recorded current-term marks. Equal averages share a position; missing marks are not zero.");
-  doc.save(`${cleanFile(w.school.name)}_${cleanFile(sheet.classGroup.name)}_Term${w.school.current_term}_${kind}.pdf`);
+  if (options.download !== false)
+    doc.save(`${cleanFile(w.school.name)}_${cleanFile(sheet.classGroup.name)}_Term${w.school.current_term}_${kind}.pdf`);
+  return doc;
 }
 
 export function exportClassListPdf(
