@@ -1,8 +1,7 @@
 import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
 import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
-import { isGradeNineClass, mockBandFor } from "./grade9-mock";
-import { aggregatePositions, computeGradeNineMock, isGradeNineClass } from "./grade9-mock";
+import { aggregatePositions, computeGradeNineMock, isGradeNineClass, mockBandFor } from "./grade9-mock";
 export function currentSnapshot(
   w: Workspace,
   student: Student,
