@@ -1,6 +1,7 @@
 import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
 import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
+import { isGradeNineClass, mockBandFor } from "./grade9-mock";
 import { aggregatePositions, computeGradeNineMock, isGradeNineClass } from "./grade9-mock";
 export function currentSnapshot(
   w: Workspace,
@@ -39,6 +40,7 @@ export function reportData(snapshot: ReportSnapshot): {
     s = x.student,
     sch = x.school,
     c = x.class;
+  const gradeNine = isGradeNineClass(c.name);
   const average = x.scores.length
     ? x.scores.reduce((sum, s) => sum + Number(s.total), 0) / x.scores.length
     : 0;
@@ -128,7 +130,7 @@ export function reportData(snapshot: ReportSnapshot): {
         sbaScaled: Number(sc.sba_scaled),
         examScaled: Number(sc.exam_scaled),
         total: Number(sc.total),
-        grade: sc.grade,
+        grade: gradeNine ? (mockBandFor(Number(sc.total))?.grade ?? "-") : sc.grade,
         subjectRemark: sc.subject_remark || getPerformanceRemark(Number(sc.total)),
         position: computePositions(
           x.class_scores
@@ -172,7 +174,9 @@ export function reportData(snapshot: ReportSnapshot): {
           }
         : undefined,
       overallAverage: Math.round(average * 100) / 100,
-      overallGrade: x.scores.length ? getGrade(average).grade : "-",
+      overallGrade: x.scores.length
+        ? (gradeNine ? (mockBandFor(average)?.grade ?? "-") : getGrade(average).grade)
+        : "-",
       overallPosition: x.scores.length ? positions.get(s.id) : undefined,
       gradeNineMockPosition: isGradeNineClass(c.name) ? gradeNineMockPositions.get(s.id) ?? null : undefined,
       totalStudents: x.class_students.length,
