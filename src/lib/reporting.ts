@@ -89,6 +89,7 @@ export function reportData(snapshot: ReportSnapshot): {
         academicYear: sch.academic_year,
         currentTerm: sch.current_term as 1 | 2 | 3,
         nextTermBegins: sch.next_term_begins || null,
+        termTotalDays: sch.term_total_days ?? null,
         sbaWeight: Number(sch.sba_weight),
         examWeight: Number(sch.exam_weight),
         gradingScale: {

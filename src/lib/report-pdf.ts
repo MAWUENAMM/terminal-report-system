@@ -15,12 +15,16 @@ const PALE: RGB = [247, 249, 248];
 const MUTED: RGB = [91, 105, 116];
 const WHITE: RGB = [255, 255, 255];
 
-export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+export function generateReportPDF(data: ReportCardData, subjects: Subject[], existingDoc?: jsPDF) {
+  // Existing document mode appends exactly one A4 page for each class learner.
+  const doc = existingDoc ?? new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  if (existingDoc) doc.addPage();
+  const reportPage = doc.getNumberOfPages();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 9;
   const contentWidth = pageWidth - margin * 2;
+  const compact = data.scores.length > 7;
   let y = 10;
 
   const {
@@ -131,9 +135,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
 
   const room = (height: number) => {
     if (y + height <= pageHeight - 17) return;
-    doc.addPage();
-    y = 12;
-    drawPageFrame();
+    throw new Error("This learner's report is too long for one A4 page. Shorten the remarks or review the number of subjects.");
   };
 
   const labelValue = (
@@ -274,9 +276,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     theme: "grid",
     styles: {
       font: "helvetica",
-      fontSize: 8.4,
+      fontSize: compact ? 7.2 : 8.1,
       textColor: NAVY,
-      cellPadding: 2.0,
+      cellPadding: compact ? 1.05 : 1.35,
       lineColor: LINE,
       lineWidth: 0.25,
       valign: "middle",
@@ -285,9 +287,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
       fillColor: NAVY,
       textColor: WHITE,
       fontStyle: "bold",
-      fontSize: 7.8,
+      fontSize: compact ? 7.1 : 7.8,
       halign: "center",
-      cellPadding: 1.9,
+      cellPadding: compact ? 1.2 : 1.5,
     },
     alternateRowStyles: { fillColor: [250, 251, 250] },
     columnStyles: {
@@ -302,11 +304,16 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     margin: { left: margin, right: margin },
   });
 
-  y = ((doc as any).lastAutoTable?.finalY || y) + 4;
+  // Avoid splitting the subject table across pages or pushing the signatures
+  // onto a second sheet. Both individual and class packs must be 1 page/learner.
+  if (doc.getNumberOfPages() !== reportPage) {
+    throw new Error("The subject table exceeds the printable area of a single A4 report.");
+  }
+  y = ((doc as any).lastAutoTable?.finalY || y) + 2;
 
-  room(29);
+  room(compact ? 20 : 24);
   const half = (contentWidth - 4) / 2;
-  const infoHeight = 25;
+  const infoHeight = compact ? 19 : 21;
   outlineRect(margin, y, half, infoHeight, LINE, 2);
   text("ATTENDANCE", margin + 4, y + 6.2, 7.3, "bold", GREEN);
   if (attendance) {
@@ -315,6 +322,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
       : "0.0";
     text(`${attendance.daysPresent} / ${attendance.totalDays} days`, margin + 4, y + 12, 8.6, "bold", NAVY);
     text(`${rate}% attendance`, margin + 4, y + 17, 5.6, "normal", MUTED);
+  } else if (school.termTotalDays) {
+    text(`Total school days: ${school.termTotalDays}`, margin + 4, y + 12, 8.1, "bold", NAVY);
+    text("Learner days present: not recorded", margin + 4, y + 17, 6.5, "normal", MUTED);
   } else {
     text("Not recorded", margin + 4, y + 13, 7, "normal", MUTED);
   }
@@ -337,16 +347,16 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const display = value || "—";
     text(display, x + 15, top, fit(display, half / 2 - 18, 6.5, 5.2), "normal", NAVY);
   });
-  y += infoHeight + 4;
+  y += infoHeight + 2;
 
-  room(42);
+  room(compact ? 30 : 37);
   text("REMARKS", margin, y, 8.7, "bold", GREEN);
   setStroke(GOLD, 0.8);
   doc.line(margin, y + 2, margin + 18, y + 2);
   y += 4.5;
 
   const remarkRow = (label: string, value?: string) => {
-    const h = 17;
+    const h = compact ? 12 : 14;
     outlineRect(margin, y, contentWidth, h, LINE, 1.5);
     text(label, margin + 4, y + 6.4, 6.8, "bold", MUTED);
     doc.setFont("helvetica", "normal");
@@ -354,13 +364,13 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
     const lines = doc.splitTextToSize(value || "No remark recorded.", contentWidth - 45);
     doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
     doc.text(lines.slice(0, 2), margin + 40, y + 6.4);
-    y += h + 2;
+    y += h + 1;
   };
 
   remarkRow("CLASS TEACHER", remarks?.classTeacherRemark);
   remarkRow("HEADTEACHER", remarks?.headteacherRemark);
 
-  room(60);
+  room(compact ? 41 : 46);
   const nextTerm = school.nextTermBegins
     ? new Date(school.nextTermBegins + "T12:00:00").toLocaleDateString("en-GB", {
         day: "numeric", month: "long", year: "numeric",
@@ -379,12 +389,12 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   const factWidth = (contentWidth - factGap) / 2;
   facts.forEach(([label, value], index) => {
     const x = margin + (index % 2) * (factWidth + factGap);
-    const top = y + Math.floor(index / 2) * 15;
-    fillRect(x, top, factWidth, 13, PALE, 1.4);
+    const top = y + Math.floor(index / 2) * 13;
+    fillRect(x, top, factWidth, 12, PALE, 1.4);
     text(label, x + 3, top + 4.3, 6.5, "bold", MUTED);
     text(value, x + 3, top + 10.1, fit(value, factWidth - 6, 8.8, 7.1), "bold", NAVY);
   });
-  y += 36;
+  y += 29;
 
   const signatureWidth = (contentWidth - 14) / 2;
   [
@@ -399,14 +409,15 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[]) {
   });
 
   const pages = doc.getNumberOfPages();
-  for (let page = 1; page <= pages; page++) {
+  if (pages !== reportPage) throw new Error("Report would exceed a single A4 page.");
+  for (let page = reportPage; page <= pages; page++) {
     doc.setPage(page);
     if (page > 1) drawPageFrame();
     addWatermark();
     setStroke(LINE, 0.25);
     doc.line(margin, pageHeight - 11, pageWidth - margin, pageHeight - 11);
     text(
-      `${school.name} · ${school.academicYear} · Term ${school.currentTerm} · Page ${page} of ${pages}`,
+      `${school.name} · ${school.academicYear} · Term ${school.currentTerm} · Page 1 of 1`,
       pageWidth / 2,
       pageHeight - 6.5,
       6.3,

@@ -100,6 +100,7 @@ export default function Settings() {
                 exam_weight,
                 sba_input_max,
                 next_term_begins,
+                term_total_days,
               } = school;
               await updateRow("schools", school.id, {
                 name,
@@ -113,6 +114,7 @@ export default function Settings() {
                 exam_weight,
                 sba_input_max,
                 next_term_begins: next_term_begins || null,
+                term_total_days: term_total_days ?? null,
               });
             }, "School settings saved.");
             if (ok) setDirty(false);
@@ -146,6 +148,32 @@ export default function Settings() {
             ))}
           </section>
 
+          <section className="surface rounded-2xl p-6">
+            <h2 className="font-semibold">Attendance: total school days this term</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Set the official total number of days for {w.school.academic_year},
+              Term {w.school.current_term}. This applies to all learner reports and
+              synchronizes existing attendance records for the current open term.
+              It never fills in or guesses an individual learner’s days present.
+            </p>
+            <Field label="Total school days (1–366)">
+              <input type="number" min={1} max={366} step={1}
+                className="field mt-3" disabled={!w.terms.some((t)=>t.academic_year===w.school.academic_year &&
+                  t.term===w.school.current_term && t.status==="OPEN")}
+                value={school.term_total_days ?? ""}
+                placeholder="e.g. 63"
+                onChange={(event)=>{
+                  const value=event.target.value;
+                  setDirty(true);
+                  setSchool({...school,term_total_days:value===""?null:Number(value)});
+                }}
+              />
+            </Field>
+            <p className="mt-2 text-xs text-muted">
+              This value clears at the start of the next term. Prior archived reports stay unchanged.
+              Teachers still record each learner’s actual days present separately.
+            </p>
+          </section>
           <section className="surface rounded-2xl p-6">
             <h2 className="font-semibold">Next term begins</h2>
             <p className="mt-1 text-sm text-muted">

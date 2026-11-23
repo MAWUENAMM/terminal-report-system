@@ -206,7 +206,7 @@ export default function Reports() {
     setEditingStudent(student);
     setNotes({
       days_present: snapshot.attendance?.days_present || 0,
-      total_days: snapshot.attendance?.total_days || 0,
+      total_days: w.school.term_total_days ?? snapshot.attendance?.total_days ?? 0,
       conduct: snapshot.affective?.conduct || "",
       interest: snapshot.affective?.interest || "",
       attitude: snapshot.affective?.attitude || "",
@@ -246,6 +246,15 @@ export default function Reports() {
       const { exportClassResultsPdf } = await import("@/lib/class-sheet-pdf");
       exportClassResultsPdf(w, selectedClass.id, kind);
     }, kind === "performance" ? "Performance sheet PDF downloaded." : "Class rank-position PDF downloaded.");
+  }
+
+  async function downloadEveryClassReport() {
+    if (!selectedClass) return;
+    await run(async () => {
+      const { downloadClassReportPack } = await import("@/lib/class-report-pack");
+      const count = await downloadClassReportPack(w, selectedClass.id);
+      if (!count) throw new Error("No learner reports were available.");
+    }, "One combined class PDF downloaded, one A4 page per learner.");
   }
 
   return (
@@ -387,6 +396,10 @@ export default function Reports() {
               <button className="btn-primary" disabled={busy || !currentRows.length}
                 onClick={() => void downloadClassSheet("ranking")}>
                 <Download className="mr-1.5 inline h-4 w-4" /> New rank positions (PDF)
+              </button>
+              <button className="btn-secondary" disabled={busy || !currentRows.length}
+                onClick={() => void downloadEveryClassReport()}>
+                <Download className="mr-1.5 inline h-4 w-4" /> All learner reports (one PDF)
               </button>
             </div>
           </div>
@@ -768,7 +781,8 @@ export default function Reports() {
                   "talents",
                   "class_teacher_remark",
                 ])
-                  payload[key] = notes[key];
+                  payload[key] = key === "total_days" && w.school.term_total_days != null
+                    ? w.school.term_total_days : notes[key];
               if (leader) payload.headteacher_remark = notes.headteacher_remark;
 
               const ok = await run(async () => {
@@ -794,6 +808,7 @@ export default function Reports() {
                     max={366}
                     step={1}
                     required
+                    readOnly={key === "total_days" && w.school.term_total_days != null}
                     disabled={
                       !open ||
                       !(
@@ -801,7 +816,8 @@ export default function Reports() {
                         w.classes.find((c) => c.id === editingStudent.class_id)?.class_teacher_id === w.profile.id
                       )
                     }
-                    value={notes[key]}
+                    value={key === "total_days" && w.school.term_total_days != null
+                      ? w.school.term_total_days : notes[key]}
                     onChange={(e) =>
                       setNotes({ ...notes, [key]: Number(e.target.value) })
                     }

@@ -24,6 +24,7 @@ export interface School {
   academicYear: string;
   currentTerm: 1 | 2 | 3;
   nextTermBegins?: string | null;
+  termTotalDays?: number | null;
   sbaWeight: number;
   examWeight: number;
   gradingScale: GradingScale;
