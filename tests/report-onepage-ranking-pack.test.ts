@@ -84,3 +84,18 @@ test("Ranking PDF shows subject names instead of numeric subject codes",()=>{
   for(const subject of courseNames)assert.ok(pdf.includes(subject),`Missing subject heading: ${subject}`);
   assert.ok(!pdf.includes("(4) Tj"),"Ranking header should not display numeric subject code 4");
 });
+
+test("Report also remains one A4 page for a broader 11-subject junior high curriculum",()=>{
+  const extended:Subject[]=Array.from({length:11},(_,i)=>({
+    id:`subject-${i+1}`,name:`SUBJECT ${i+1}`,
+    code:String(i+1),level:"JHS",isCore:true,order:i+1,
+  }));
+  const scores=extended.map((s,i)=>({
+    ...scoreRows[0],id:`score-${i+1}`,subjectId:s.id,total:60,
+  }));
+  const doc=generateReportPDF({
+    ...first,scores,class:{...first.class,name:"Grade 8",level:"JHS"},
+    overallAverage:60,overallGrade:"C",
+  },extended);
+  assert.equal(doc.getNumberOfPages(),1);
+});
