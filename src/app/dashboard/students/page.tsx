@@ -2,7 +2,9 @@
 import { useState } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Field, Modal, Empty } from "@/components/ui";
-import { saveRows, deleteRow, updateRow } from "@/lib/api";
+import { saveRows, updateRow } from "@/lib/api";
+import { browserClient } from "@/lib/supabase/client";
+import { SCHOOL_ASSET_BUCKET, studentPhotoPath } from "@/lib/school-branding";
 import { fullName, isLeader, type Student } from "@/lib/models";
 import { filterSortStudents, type GenderFilter, type NameSort } from "@/lib/class-sheets";
 import { readStudentImport, type ImportedStudent } from "@/lib/student-import";
@@ -33,6 +35,49 @@ export default function Students() {
       ...w.archives,
     ].map((record) => record.student_id),
   );
+  async function permanentlyDeleteLearner(student: Student) {
+    if (w.profile.role !== "ADMIN") return;
+    const historyCount = [
+      ...w.scores, ...w.attendance, ...w.affective, ...w.remarks, ...w.archives,
+    ].filter((row) => row.student_id === student.id).length;
+    const accepted = window.confirm(
+      `PERMANENT DELETION — ${fullName(student)} (${student.admission_number})\n\n` +
+      `This permanently deletes the learner, ${historyCount} linked academic records shown in the dashboard, ` +
+      `their saved assessments, attendance, remarks, and archived report snapshots.\n\n` +
+      `This action cannot be undone. Financial records or already-issued transcripts will block deletion.\n\n` +
+      `Do you want to continue?`,
+    );
+    if (!accepted) return;
+    const typed = window.prompt(
+      `Final confirmation: type the EXACT admission number "${student.admission_number}" to permanently delete ${fullName(student)}.`,
+      "",
+    );
+    if (typed === null) return;
+    if (typed.trim().toUpperCase() !== student.admission_number.trim().toUpperCase()) {
+      window.alert("Deletion cancelled: the admission number did not match.");
+      return;
+    }
+
+    await run(async () => {
+      const { data, error } = await browserClient().rpc("admin_permanently_delete_learner", {
+        p_student_id: student.id,
+        p_admission_number: typed.trim(),
+      });
+      if (error) throw new Error(error.message);
+      if (!data || data.deleted !== true) throw new Error("Permanent deletion was not confirmed.");
+
+      const { error: photoError } = await browserClient().storage
+        .from(SCHOOL_ASSET_BUCKET)
+        .remove([studentPhotoPath(w.school.id, student.id)]);
+      if (photoError) {
+        throw new Error(
+          "The learner and academic records were deleted, but the old photo needs administrator cleanup: " +
+            photoError.message,
+        );
+      }
+    }, "Learner, assessments, attendance, archived reports and photo permanently removed.");
+  }
+
   return (
     <>
       <PageHeader
@@ -222,29 +267,21 @@ export default function Students() {
                           {s.status==="GRADUATED"&&<span className="text-xs font-bold text-emerald-800">
                             Alumni record preserved
                           </span>}
-                          <button
-                            className="text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                            disabled={busy || protectedRecords || s.status === "GRADUATED"}
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `Permanently delete ${fullName(s)}? This cannot be undone. Learners with assessment or report history cannot be deleted.`,
-                                )
-                              )
-                                void run(
-                                  () => deleteRow("students", s.id),
-                                  "Unused learner record deleted.",
-                                );
-                            }}
-                          >
-                            Delete
-                          </button>
+                          {w.profile.role === "ADMIN" && (
+                            <button
+                              className="font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              disabled={busy}
+                              onClick={() => void permanentlyDeleteLearner(s)}
+                              title="Administrator-only irreversible deletion, including academic history"
+                            >
+                              Permanently delete
+                            </button>
+                          )}
                         </div>
                         {protectedRecords && (
                           <p className="mt-2 text-xs text-muted">
-                            {s.status === "ACTIVE"
-                              ? "History retained. Use Withdraw to remove from the active list."
-                              : "Assessment and report history is retained."}
+                            This learner has academic history. Withdraw or Graduate preserves it;
+                            permanent deletion requires the administrator's typed confirmation.
                           </p>
                         )}
                       </td>
