@@ -71,124 +71,262 @@ export function amountInWords(value: number) {
 }
 
 import autoTable from "jspdf-autotable";
-export async function downloadFinanceReceipt({
-  school, student, cls, payment, charges, allocations, issuedBy, balance
-}: {
-  school: School; student: Student; cls?: SchoolClass;
-  payment: FinancePayment; charges: FinanceCharge[];
-  allocations: FinanceAllocation[]; issuedBy: string; balance: number;
-}) {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  type Ink = [number,number,number];
-  const green: Ink = [12,91,68], navy: Ink = [25,43,50], gold: Ink = [226,177,61];
-  const mint: Ink = [234,247,239], grey: Ink = [103,119,120];
-  const clean = (value: string) => String(value||"").replace(/[^\x20-\x7E]/g," ").replace(/\s+/g," ").trim();
-  const label = (value:string,x:number,y:number,size=9,color:Ink=navy,bold=false) => {
-    doc.setFont("helvetica",bold?"bold":"normal");
-    doc.setFontSize(size);doc.setTextColor(...color);doc.text(clean(value),x,y);
-  };
-  const right = (value:string,x:number,y:number,size=9,color:Ink=navy,bold=false) => {
-    doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(...color);
-    doc.text(clean(value),x,y,{align:"right"});
-  };
-  const box = (x:number,y:number,w:number,h:number,color:Ink) => {
-    doc.setFillColor(...color);doc.roundedRect(x,y,w,h,3,3,"F");
-  };
-  const fit = (value:string,limit:number,max=15) => {
-    doc.setFont("helvetica","bold");
-    for(let size=max;size>=9;size-=.5){doc.setFontSize(size);if(doc.getTextWidth(clean(value))<=limit)return size;}
-    return 9;
-  };
-  const [logoUrl,photoUrl] = await Promise.all([
-    resolveSchoolAssetUrl(school.logo_url),resolveSchoolAssetUrl(student.photo_url)
-  ]);
-  let logo:string|null=null,photo:string|null=null;
-  if(logoUrl)try{logo=await imageUrlToPngDataUrl(logoUrl);}catch{ /* optional */ }
-  if(photoUrl)try{photo=await imageUrlToPngDataUrl(photoUrl);}catch{ /* optional */ }
-  const schoolName=clean(school.name).toUpperCase();
-  const studentName=[student.first_name,student.other_names,student.last_name].filter(Boolean).join(" ");
-  const receivedAt=new Date(payment.created_at);
-  const paymentDate=Number.isNaN(receivedAt.getTime())?"Unknown date":receivedAt.toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
-  const printedAt=new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
-  // Genuine branded letterhead. All currency is ASCII 'GHS' for consistent PDF rendering.
-  doc.setFillColor(...green);doc.rect(0,0,210,48,"F");
-  doc.setFillColor(...gold);doc.rect(0,48,210,2.5,"F");
-  box(15,12,28,28,[255,255,255]);
-  if(logo) doc.addImage(logo,"PNG",18,15,22,22);
-  else label("EDU",20,30,12,green,true);
-  label(schoolName,49,22,fit(schoolName,148),[255,255,255],true);
-  label([school.address,school.district,school.region].filter(Boolean).join(" | ").slice(0,85),49,29,7,[218,238,228]);
-  label([school.phone,school.email].filter(Boolean).join(" | ").slice(0,85),49,35,7,[218,238,228]);
-  label("PAYMENT RECEIPT",16,64,16,green,true);
-  label("OFFICIAL SCHOOL FINANCE DOCUMENT",16,70,7.4,grey,true);
-  right(payment.receipt_number,194,63,9,navy,true);
-  right(paymentDate,194,70,8,grey);
-  box(15,76,180,27,green);
-  label("AMOUNT RECEIVED",21,84,8,[224,245,233],true);
-  label(ghs(Number(payment.amount)),21,96,19,[255,255,255],true);
-  box(153,82,35,12,payment.voided_at?[167,54,44]:[231,246,236]);
-  right(payment.voided_at?"VOIDED":"RECEIVED",184,89.5,10,payment.voided_at?[255,255,255]:green,true);
-  box(15,109,180,34,[245,249,247]);
-  label("STUDENT DETAILS",21,117,7.5,green,true);
-  label(studentName,21,126,fit(studentName,129,14),navy,true);
-  label("Admission No: "+student.admission_number,21,134,8,grey);
-  label("Class: "+(cls?.name||"Not specified"),21,140,8,grey);
-  if(photo)doc.addImage(photo,"PNG",163,111,25,29);
-  else{doc.setDrawColor(211,223,218);doc.roundedRect(163,111,25,29,2,2,"S");label("PHOTO",166,126,6,grey);}
-  if(logo){
-    doc.saveGraphicsState();
-    try{doc.setGState(new GState({opacity:.065}));doc.addImage(logo,"PNG",62,159,86,86);}
-    finally{doc.restoreGraphicsState();}
+
+export type FinanceReceiptArgs = {
+  school: School;
+  student: Student;
+  cls?: SchoolClass;
+  payment: FinancePayment;
+  charges: FinanceCharge[];
+  allocations: FinanceAllocation[];
+  issuedBy: string;
+  balance: number;
+};
+
+/**
+ * PAYMENT RECEIPTS ONLY: A5 portrait (148 x 210 mm).
+ * Report cards, academic transcripts, ranking sheets, class PDFs, finance
+ * reports and item sale documents retain their existing page formats.
+ */
+export async function buildFinanceReceiptPdf({
+  school, student, cls, payment, charges, allocations, issuedBy, balance,
+}: FinanceReceiptArgs): Promise<jsPDF> {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+  type Ink = [number, number, number];
+  const green: Ink = [12, 91, 68];
+  const navy: Ink = [25, 43, 50];
+  const gold: Ink = [226, 177, 61];
+  const mint: Ink = [234, 247, 239];
+  const grey: Ink = [103, 119, 120];
+  const white: Ink = [255, 255, 255];
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 9;
+  const width = pageWidth - margin * 2;
+  const clean = (value: unknown) =>
+    String(value ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
+
+  function fittingSize(value: string, availableWidth: number, preferred: number, minimum = 6) {
+    doc.setFont("helvetica", "bold");
+    for (let size = preferred; size >= minimum; size -= 0.25) {
+      doc.setFontSize(size);
+      if (doc.getTextWidth(clean(value)) <= availableWidth) return size;
+    }
+    return minimum;
   }
-  label("PAYMENT BREAKDOWN",16,151,9.5,green,true);
-  const own=allocations.filter(a=>a.payment_id===payment.id);
-  const lines=own.map(a=>{
-    const charge=charges.find(c=>c.id===a.charge_id);
-    return [clean(charge?.description||"School charge"),charge?charge.academic_year+" | Term "+charge.term:"-",
-      ghs(Number(a.amount))];
-  });
-  autoTable(doc,{
-    startY:155,margin:{left:15,right:15,bottom:47},
-    head:[["DESCRIPTION","ACADEMIC PERIOD","AMOUNT"]],
-    body:lines.length?lines:[["Payment (allocation detail unavailable)","-",ghs(Number(payment.amount))]],
-    theme:"grid",
-    headStyles:{fillColor:[25,43,50],textColor:[255,255,255],fontStyle:"bold",minCellHeight:10},
-    styles:{font:"helvetica",fontSize:8.4,cellPadding:3.1,textColor:[25,43,50],lineColor:[217,230,224],lineWidth:.12},
-    alternateRowStyles:{fillColor:[247,251,248]},
-    columnStyles:{0:{cellWidth:82},1:{cellWidth:52},2:{cellWidth:46,halign:"right",fontStyle:"bold"}}
-  });
-  let y=(doc as jsPDF & {lastAutoTable?:{finalY:number}}).lastAutoTable?.finalY||174;
-  if(y>218){doc.addPage();y=24;}
-  y+=5;
-  box(15,y,180,28,mint);
-  label("TOTAL RECEIVED",21,y+8,8,green,true);
-  label(ghs(Number(payment.amount)),21,y+21,16,green,true);
-  right("BALANCE AT TIME OF PRINT",189,y+8,7,grey,true);
-  right(ghs(balance),189,y+20,11,navy,true);
-  y+=34;
-  label("AMOUNT IN WORDS",17,y,7,green,true);
-  const words=doc.splitTextToSize(clean(amountInWords(Number(payment.amount))),174);
-  doc.setFont("helvetica","bold");doc.setFontSize(8.4);doc.setTextColor(...navy);
-  doc.text(words,17,y+7);
-  y+=Math.max(14,words.length*5+8);
-  if(y>244){doc.addPage();y=26;}
-  label("PAYMENT METHOD",17,y+5,7,grey,true);label(payment.method,17,y+12,9,navy,true);
-  label("TRANSACTION REFERENCE",107,y+5,7,grey,true);
-  label((payment.reference||"Not supplied").slice(0,40),107,y+12,8.5,navy);
-  y+=19;
-  label("RECORDED BY",17,y+5,7,grey,true);label(issuedBy.slice(0,50),17,y+12,8.5,navy,true);
-  label("PRINTED",117,y+5,7,grey,true);label(printedAt,117,y+12,8,navy);
-  const pages=doc.getNumberOfPages();
-  for(let page=1;page<=pages;page++){
-    doc.setPage(page);doc.setDrawColor(...gold);doc.setLineWidth(.45);doc.line(15,282,195,282);
-    label("EDUREPORT  |  OFFICIAL SCHOOL PAYMENT RECORD",15,287,6.5,grey,true);
-    right("Page "+page+" of "+pages+"  |  "+payment.receipt_number,195,287,6.5,grey);
-    if(payment.voided_at){
-      doc.saveGraphicsState();
-      try{doc.setGState(new GState({opacity:.34}));doc.setFont("helvetica","bold");doc.setFontSize(43);
-        doc.setTextColor(174,48,44);doc.text("VOIDED",108,203,{align:"center",angle:25});}
-      finally{doc.restoreGraphicsState();}
+  function clip(value: string, availableWidth: number, size: number, bold = false) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    const original = clean(value);
+    if (doc.getTextWidth(original) <= availableWidth) return original;
+    let result = original;
+    while (result.length > 1 && doc.getTextWidth(result + "...") > availableWidth) {
+      result = result.slice(0, -1);
+    }
+    return result + "...";
+  }
+  function text(value: string, x: number, y: number, size = 8, color: Ink = navy, bold = false, maxWidth?: number) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.text(maxWidth === undefined ? clean(value) : clip(value, maxWidth, size, bold), x, y);
+  }
+  function right(value: string, x: number, y: number, size = 8, color: Ink = navy, bold = false, maxWidth?: number) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.text(maxWidth === undefined ? clean(value) : clip(value, maxWidth, size, bold), x, y, { align: "right" });
+  }
+  function panel(x: number, y: number, w: number, h: number, color: Ink) {
+    doc.setFillColor(...color);
+    doc.roundedRect(x, y, w, h, 2.4, 2.4, "F");
+  }
+
+  const [logoUrl, photoUrl] = await Promise.all([
+    resolveSchoolAssetUrl(school.logo_url),
+    resolveSchoolAssetUrl(student.photo_url),
+  ]);
+  let logo: string | null = null;
+  let photo: string | null = null;
+  if (logoUrl) {
+    try { logo = await imageUrlToPngDataUrl(logoUrl); }
+    catch { /* The receipt remains printable without the school logo. */ }
+  }
+  if (photoUrl) {
+    try { photo = await imageUrlToPngDataUrl(photoUrl); }
+    catch { /* Student photographs are optional on printed receipts. */ }
+  }
+
+  const schoolName = clean(school.name).toUpperCase();
+  const studentName = [student.first_name, student.other_names, student.last_name]
+    .filter(Boolean).join(" ");
+  const receivedAt = new Date(payment.created_at);
+  const paymentDate = Number.isNaN(receivedAt.getTime())
+    ? "Unknown date" : receivedAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+  const printedAt = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+  const receiptRef = clean(payment.receipt_number);
+  const status = payment.voided_at ? "VOIDED" : "RECEIVED";
+
+  // Compact branded A5 letterhead. All coordinates are within the 148 mm page.
+  doc.setFillColor(...green);
+  doc.rect(0, 0, pageWidth, 31, "F");
+  doc.setFillColor(...gold);
+  doc.rect(0, 31, pageWidth, 1.8, "F");
+  panel(9, 5, 20, 20, white);
+  if (logo) doc.addImage(logo, "PNG", 11, 7, 16, 16);
+  else text("EDU", 11, 17, 9, green, true);
+  text(schoolName, 34, 12.7, fittingSize(schoolName, 106, 11, 7.5), white, true, 106);
+  const address = [school.address, school.district, school.region].filter(Boolean).join(" | ");
+  const contact = [school.phone, school.email].filter(Boolean).join(" | ");
+  text(address, 34, 19.2, 6.2, [221, 241, 230], false, 106);
+  text(contact, 34, 24.3, 6.2, [221, 241, 230], false, 106);
+
+  text("PAYMENT RECEIPT", 9, 40.5, 13, green, true);
+  text("OFFICIAL SCHOOL FINANCE DOCUMENT", 9, 46.1, 6.4, grey, true);
+  right(receiptRef, pageWidth - 9, 40.5, fittingSize(receiptRef, 69, 7.5, 6), navy, true, 69);
+  right(paymentDate, pageWidth - 9, 46.1, 6.5, grey);
+
+  panel(margin, 49.5, width, 21, green);
+  text("AMOUNT RECEIVED", 13, 56.2, 7, [225, 243, 234], true);
+  const paymentAmount = ghs(Number(payment.amount));
+  text(paymentAmount, 13, 65.5, fittingSize(paymentAmount, 81, 16, 11), white, true);
+  panel(103, 54.5, 32, 10.2, payment.voided_at ? [162, 53, 43] : [231, 246, 236]);
+  right(status, 131, 60.9, 8.2, payment.voided_at ? white : green, true);
+
+  panel(margin, 74, width, 29, [245, 249, 247]);
+  text("STUDENT DETAILS", 13, 80, 7.1, green, true);
+  text(studentName, 13, 88, fittingSize(studentName, 100, 11.5, 7), navy, true, 100);
+  text("Admission No: " + student.admission_number, 13, 95, 7.4, grey, false, 103);
+  text("Class: " + (cls?.name || "Not specified"), 13, 101, 7.4, grey, false, 103);
+  if (photo) doc.addImage(photo, "PNG", 119, 76.7, 17, 22.7);
+  else {
+    doc.setDrawColor(211, 223, 218);
+    doc.roundedRect(119, 76.7, 17, 22.7, 1.6, 1.6, "S");
+    text("PHOTO", 121.2, 89, 5.4, grey);
+  }
+
+  // Subtle watermark underneath the payment breakdown and totals.
+  if (logo) {
+    doc.saveGraphicsState();
+    try {
+      doc.setGState(new GState({ opacity: 0.06 }));
+      doc.addImage(logo, "PNG", 40, 114, 68, 68);
+    } finally {
+      doc.restoreGraphicsState();
     }
   }
-  doc.save("receipt-"+payment.receipt_number.replace(/[^a-zA-Z0-9-]/g,"")+".pdf");
+  text("PAYMENT BREAKDOWN", 10, 109.2, 8.8, green, true);
+
+  const selectedAllocations = allocations.filter((a) => a.payment_id === payment.id);
+  const rows = selectedAllocations.map((a) => {
+    const charge = charges.find((c) => c.id === a.charge_id);
+    return [
+      clean(charge?.description || "School charge"),
+      charge ? charge.academic_year + " | Term " + charge.term : "-",
+      ghs(Number(a.amount)),
+    ];
+  });
+  autoTable(doc, {
+    startY: 112.5,
+    margin: { left: margin, right: margin, top: 12, bottom: 12 },
+    head: [["DESCRIPTION", "ACADEMIC PERIOD", "AMOUNT"]],
+    body: rows.length ? rows : [["Payment (allocation unavailable)", "-", paymentAmount]],
+    theme: "grid",
+    pageBreak: "auto",
+    showHead: "everyPage",
+    headStyles: {
+      fillColor: navy,
+      textColor: white,
+      fontStyle: "bold",
+      fontSize: 6.8,
+      minCellHeight: 7,
+      cellPadding: 1.8,
+    },
+    styles: {
+      font: "helvetica",
+      fontSize: 7.2,
+      cellPadding: 2,
+      textColor: navy,
+      lineColor: [217, 230, 224],
+      lineWidth: 0.12,
+      overflow: "linebreak",
+      valign: "middle",
+    },
+    alternateRowStyles: { fillColor: [247, 251, 248] },
+    columnStyles: {
+      0: { cellWidth: 56 },
+      1: { cellWidth: 40 },
+      2: { cellWidth: width - 96, halign: "right", fontStyle: "bold" },
+    },
+  });
+
+  let y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 127;
+  y += 3;
+  const wordText = clean(amountInWords(Number(payment.amount)));
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.6);
+  const wordLines = doc.splitTextToSize(wordText, width - 8) as string[];
+  // Keep the totals, amount in words, payment details and footer together.
+  const remainingHeight = 20 + 3 + 10 + Math.max(0, wordLines.length - 1) * 4 +
+    13 + 13 + 4;
+  if (y + remainingHeight > pageHeight - 10) {
+    doc.addPage();
+    y = 14;
+    text("PAYMENT RECEIPT - CONTINUED", 9, 10, 8, green, true);
+    right(receiptRef, pageWidth - 9, 10, 6.5, grey, true, 73);
+  }
+
+  panel(margin, y, width, 18, mint);
+  text("TOTAL RECEIVED", 13, y + 5, 6.8, green, true);
+  text(paymentAmount, 13, y + 13.3, fittingSize(paymentAmount, 63, 12.8, 9), green, true);
+  right("BALANCE AT PRINT", 135, y + 5, 6.2, grey, true);
+  const balanceText = ghs(balance);
+  right(balanceText, 135, y + 13.3, fittingSize(balanceText, 56, 10, 7.5), navy, true);
+  y += 21;
+  text("AMOUNT IN WORDS", 10, y + 2.2, 6.6, green, true);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.6);
+  doc.setTextColor(...navy);
+  doc.text(wordLines, 10, y + 7);
+  y += 10 + Math.max(0, wordLines.length - 1) * 4;
+
+  text("PAYMENT METHOD", 10, y + 3.5, 6.5, grey, true);
+  text(payment.method, 10, y + 9.5, 8, navy, true, 58);
+  text("TRANSACTION REFERENCE", 79, y + 3.5, 6.5, grey, true, 60);
+  text(payment.reference || "Not supplied", 79, y + 9.5, 8, navy, false, 60);
+  y += 14;
+
+  text("RECORDED BY", 10, y + 3.5, 6.5, grey, true);
+  text(issuedBy, 10, y + 9.5, 8, navy, true, 62);
+  text("PRINTED", 80, y + 3.5, 6.5, grey, true);
+  text(printedAt, 80, y + 9.5, 7.5, navy, false, 59);
+
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(...gold);
+    doc.setLineWidth(0.4);
+    doc.line(margin, pageHeight - 8.5, pageWidth - margin, pageHeight - 8.5);
+    text("EDUREPORT | OFFICIAL PAYMENT RECORD", margin, pageHeight - 4.7, 5.8, grey, true);
+    right("Page " + p + " of " + pages + " | " + receiptRef,
+      pageWidth - margin, pageHeight - 4.7, 5.8, grey, false, 70);
+    if (payment.voided_at) {
+      doc.saveGraphicsState();
+      try {
+        doc.setGState(new GState({ opacity: 0.30 }));
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(32);
+        doc.setTextColor(170, 49, 44);
+        doc.text("VOIDED", pageWidth / 2, pageHeight / 2, { align: "center", angle: 25 });
+      } finally {
+        doc.restoreGraphicsState();
+      }
+    }
+  }
+  return doc;
+}
+
+export async function downloadFinanceReceipt(args: FinanceReceiptArgs): Promise<void> {
+  const doc = await buildFinanceReceiptPdf(args);
+  doc.save("receipt-" + args.payment.receipt_number.replace(/[^a-zA-Z0-9-]/g, "") + ".pdf");
 }
