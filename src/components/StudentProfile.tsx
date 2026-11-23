@@ -121,7 +121,7 @@ export default function StudentProfile({ student, onClose }: Props) {
   function startEditing() {
     setNotes({
       days_present: snapshot.attendance?.days_present || 0,
-      total_days: snapshot.attendance?.total_days || 0,
+      total_days: w.school.term_total_days ?? snapshot.attendance?.total_days ?? 0,
       conduct: snapshot.affective?.conduct || "",
       interest: snapshot.affective?.interest || "",
       attitude: snapshot.affective?.attitude || "",
