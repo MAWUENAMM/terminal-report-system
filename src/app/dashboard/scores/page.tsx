@@ -5,6 +5,7 @@ import { PageHeader, Field, Empty } from "@/components/ui";
 import { saveRows } from "@/lib/api";
 import { fullName } from "@/lib/models";
 import { computeTotal } from "@/lib/grading";
+import { isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 import { filterAssessmentStudents, isCompleteMark, markEntryError } from "@/lib/assessment-filters";
 import type { GenderFilter, NameSort } from "@/lib/class-sheets";
 type Draft = { sba_raw: string; exam_raw: string; subject_remark: string };
@@ -351,7 +352,9 @@ export default function Scores() {
                       <td className="font-semibold tabular-nums">
                         {computed?.total.toFixed(2) || "—"}
                       </td>
-                      <td>{computed?.grade || "—"}</td>
+                      <td>{computed ? (isGradeNineClass(cls?.name || "")
+                        ? `${mockBandFor(computed.total)?.grade ?? "—"} (${mockBandFor(computed.total)?.point ?? "—"})`
+                        : computed.grade) : "—"}</td>
                       <td>
                         <input
                           aria-label={`Remark for ${fullName(s)}`}
