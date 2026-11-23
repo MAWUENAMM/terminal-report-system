@@ -1030,9 +1030,9 @@ export default function Reports() {
                       <thead>
                         <tr>
                           <th>Subject</th>
-                          <th>SBA</th>
-                          <th>Exam</th>
-                          <th>Total</th>
+                          {!previewGradeNineMock && <th>SBA</th>}
+                          <th>{previewGradeNineMock ? "Exam (100%)" : "Exam"}</th>
+                          {!previewGradeNineMock && <th>Total</th>
                           <th>Grade</th>
                           {previewGradeNineMock && <th>Point</th>}
                           <th>Position</th>
@@ -1045,9 +1045,9 @@ export default function Reports() {
                             <td className="font-semibold">
                               {previewSubjectMap.get(score.subjectId) || score.subjectId}
                             </td>
-                            <td>{Number(score.sbaScaled).toFixed(1)}</td>
-                            <td>{Number(score.examScaled).toFixed(1)}</td>
-                            <td className="font-semibold">{Number(score.total).toFixed(1)}</td>
+                            {!previewGradeNineMock && <td>{Number(score.sbaScaled).toFixed(1)}</td>}
+                            <td className="font-semibold">{Number(previewGradeNineMock ? score.examRaw : score.examScaled).toFixed(1)}</td>
+                            {!previewGradeNineMock && <td className="font-semibold">{Number(score.total).toFixed(1)}</td>
                             <td>{score.grade}</td>
                             {previewGradeNineMock && (
                               <td>{previewGradeNineMock.rows.find((row) => row.subjectId === score.subjectId)?.point ?? "—"}</td>
