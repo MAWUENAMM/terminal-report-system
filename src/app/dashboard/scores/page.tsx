@@ -4,6 +4,7 @@ import { useWorkspace } from "@/components/workspace";
 import { PageHeader, Field, Empty } from "@/components/ui";
 import { saveRows } from "@/lib/api";
 import { fullName } from "@/lib/models";
+import { EARLY_YEARS_REMARKS, earlyYearsRemark, isEarlyYearsClass } from "@/lib/early-years";
 import { computeTotal } from "@/lib/grading";
 import { isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 import { filterAssessmentStudents, isCompleteMark, markEntryError } from "@/lib/assessment-filters";
@@ -22,6 +23,7 @@ export default function Scores() {
     [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const sbaMax = Number(w.school.sba_input_max) || 100;
   const cls = w.classes.find((c) => c.id === classId),
+    earlyYears = isEarlyYearsClass(cls?.name || ""),
     gradeNine = isGradeNineClass(cls?.name || ""),
     canAll =
       w.profile.role === "ADMIN" || cls?.class_teacher_id === w.profile.id;
@@ -60,7 +62,7 @@ export default function Scores() {
       edits[id] || {
         sba_raw: s ? String(s.sba_raw) : "",
         exam_raw: s ? String(s.exam_raw) : "",
-        subject_remark: s?.subject_remark || "",
+        subject_remark: earlyYears ? (earlyYearsRemark(s?.descriptive_assessment) ?? "") : (s?.subject_remark || ""),
       }
     );
   }
@@ -90,8 +92,8 @@ export default function Scores() {
     <>
       <PageHeader
         eyebrow="Assessment"
-        title={gradeNine ? "Grade 9 examination scores" : "SBA & examination scores"}
-        description={gradeNine
+        title={earlyYears ? "Child assessment record" : gradeNine ? "Grade 9 examination scores" : "SBA & examination scores"}
+        description={earlyYears ? "Select a descriptive remark for each learner. No SBA, examination scores or marks are required." : gradeNine
           ? `Term ${w.school.current_term} · ${w.school.academic_year}. Grade 9 (JHS 3) uses examination marks out of 100 only (100% exam, no SBA).`
           : `Term ${w.school.current_term} · ${w.school.academic_year}. Enter SBA marks out of ${sbaMax} and examination marks out of 100. Both scale automatically to ${w.school.sba_weight}% SBA and ${w.school.exam_weight}% examination.`}
       />
@@ -219,6 +221,17 @@ export default function Scores() {
                 throw new Error("A mark above the permitted maximum was rejected. Correct the highlighted entry before saving.");
               }
               const rows = Object.entries(edits).map(([id, d]) => {
+                if (earlyYears) {
+                  const remark = earlyYearsRemark(d.subject_remark);
+                  if (!remark) throw new Error("Select an assessment remark for every edited learner.");
+                  const existing = scoreFor(id);
+                  return {
+                    ...(existing ? { id: existing.id } : {}),
+                    school_id: w.school.id, student_id: id, class_id: classId,
+                    subject_id: selected, academic_year: w.school.academic_year, term: w.school.current_term,
+                    sba_raw: 0, exam_raw: 0, descriptive_assessment: remark,
+                  };
+                }
                 if ((!gradeNine && !isCompleteMark(d.sba_raw, sbaMax, "SBA")) ||
                     !isCompleteMark(d.exam_raw, 100, "Exam")) {
                   const learner = students.find((s) => s.id === id);
@@ -256,7 +269,7 @@ export default function Scores() {
                 rows,
                 "student_id,subject_id,term,academic_year",
               );
-            }, "Marks saved and available to authorised staff.");
+            }, earlyYears ? "Assessments saved." : "Marks saved and available to authorised staff.");
             if (ok) { setEdits({}); setValidationErrors({}); }
           }}
         >
@@ -265,16 +278,14 @@ export default function Scores() {
               <thead>
                 <tr>
                   <th>Learner</th>
-                  {!gradeNine && <th>SBA / {sbaMax} → {w.school.sba_weight}%</th>}
-                  <th>{gradeNine ? "Examination / 100 (100%)" : `Exam / 100 → ${w.school.exam_weight}%`}</th>
-                  <th>Weighted total</th>
-                  <th>Grade</th>
-                  <th>Subject remark</th>
+                  {!earlyYears && !gradeNine && <th>SBA / {sbaMax} → {w.school.sba_weight}%</th>}
+                  {!earlyYears && <><th>{gradeNine ? "Examination / 100 (100%)" : `Exam / 100 → ${w.school.exam_weight}%`}</th><th>Weighted total</th><th>Grade</th></>}
+                  <th>{earlyYears ? "Assessment remark" : "Subject remark"}</th>
                 </tr>
               </thead>
               <tbody>
                 {!visibleStudents.length && (
-                  <tr><td colSpan={gradeNine ? 5 : 6} className="py-8 text-center text-muted">
+                  <tr><td colSpan={earlyYears ? 2 : gradeNine ? 5 : 6} className="py-8 text-center text-muted">
                     No learners match these filters. Change the search, gender, or starting letter.
                   </td></tr>
                 )}
@@ -308,6 +319,10 @@ export default function Scores() {
                           {s.admission_number}
                         </div>
                       </td>
+                      {earlyYears ? <td><select aria-label={`Assessment for ${fullName(s)}`} className="field min-w-40" disabled={!open} value={d.subject_remark} onChange={e => change(s.id, "subject_remark", e.target.value)}>
+                        <option value="">Select remark</option>
+                        {EARLY_YEARS_REMARKS.map(remark => <option key={remark} value={remark}>{remark}</option>)}
+                      </select></td> : <>
                       {!gradeNine && <td>
                         <input
                           aria-label={`SBA for ${fullName(s)}`}
@@ -381,7 +396,7 @@ export default function Scores() {
                             change(s.id, "subject_remark", e.target.value)
                           }
                         />
-                      </td>
+                      </td></>}
                     </tr>
                   );
                 })}
@@ -402,7 +417,7 @@ export default function Scores() {
               className="btn-primary"
               disabled={busy || !open || invalidCount > 0 || !Object.keys(edits).length}
             >
-              Save marks
+              {earlyYears ? "Save assessments" : "Save marks"}
             </button>
           </div>
         </form>
