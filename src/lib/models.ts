@@ -99,6 +99,7 @@ export interface Score {
   total: number;
   grade: string;
   subject_remark?: string;
+  descriptive_assessment?: string | null;
 }
 export interface Attendance {
   id: string;
