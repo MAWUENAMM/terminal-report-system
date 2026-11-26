@@ -508,16 +508,16 @@ export default function StudentProfile({ student, onClose }: Props) {
                       </div>
                       <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
                         <table className="data-table">
-                          <thead><tr><th>Subject</th><th>Mark / 100</th><th>Grade</th></tr></thead>
+                          <thead><tr><th>Subject</th>{term.descriptiveMode ? <th>Remark</th> : <><th>Mark / 100</th><th>Grade</th></>}</tr></thead>
                           <tbody>{term.subjects.length?term.subjects.map((score)=>(
-                            <tr key={score.id}><td>{score.name}</td><td>{score.score.toFixed(1)}</td><td>{score.grade}</td></tr>
+                            <tr key={score.id}><td>{score.name}</td>{term.descriptiveMode ? <td>{score.descriptiveAssessment ?? "Not assessed"}</td> : <><td>{score.score.toFixed(1)}</td><td>{score.grade}</td></>}</tr>
                           )):<tr><td colSpan={3}>No subject marks recorded for this term.</td></tr>}</tbody>
                         </table>
                       </div>
-                      <p className="mt-3 text-sm font-semibold text-slate-800">
+                      {!term.descriptiveMode && <p className="mt-3 text-sm font-semibold text-slate-800">
                         Total: {term.total?.toFixed(1)??"—"} · Average: {term.average?.toFixed(1)??"—"}%
                         · Grade: {term.grade} · Position: {ordinalPosition(term.position)}
-                      </p>
+                      </p>}
                       <p className="mt-1 text-xs text-slate-600">Attendance: {term.attendance?
                         `${term.attendance.daysPresent} / ${term.attendance.totalDays} days`:"Not recorded"}</p>
                     </section>;
