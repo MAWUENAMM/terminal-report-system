@@ -110,6 +110,7 @@ export interface Score {
   grade: string;
   position?: number;
   subjectRemark?: string;
+  descriptiveAssessment?: string | null;
 }
 
 export interface Attendance {
@@ -151,6 +152,7 @@ export interface ReportCardData {
   attendance?: Attendance;
   affective?: AffectiveRecord;
   remarks?: Remarks;
+  descriptiveMode?: boolean;
   overallAverage: number;
   overallGrade: string;
   overallPosition?: number;

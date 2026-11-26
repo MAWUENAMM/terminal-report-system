@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import type { Student, Workspace } from "./models";
 import { fullName } from "./models";
 import { buildClassResultSheet, ordinal } from "./class-sheets";
+import { earlyYearsRemark, isEarlyYearsClass } from "./early-years";
 import { isGradeNineClass } from "./grade9-mock";
 
 type PDF = InstanceType<typeof jsPDF>;
@@ -72,7 +73,8 @@ export function exportClassResultsPdf(
 ): PDF {
   const sheet = buildClassResultSheet(w, classId);
   if (!sheet.rows.length) throw new Error("This class has no active learners to print.");
-  const wide = kind === "ranking";
+  const earlyYears = isEarlyYearsClass(sheet.classGroup.name);
+  const wide = !earlyYears && kind === "ranking";
   const gradeNine = isGradeNineClass(sheet.classGroup.name);
   const doc = new jsPDF({
     orientation: wide ? "landscape" : "portrait",
@@ -80,10 +82,20 @@ export function exportClassResultsPdf(
     format: wide && sheet.subjects.length > 6 ? "a3" : "a4",
   });
   const subtitle = `${sheet.classGroup.name} | ${w.school.academic_year} | Term ${w.school.current_term} | ${sheet.rows.length} learners`;
-  const heading = kind === "performance" ? "CLASS PERFORMANCE SHEET" : "CLASS RANK POSITIONS & SUBJECT MARKS";
+  const heading = earlyYears ? "CLASS CHILD ASSESSMENT RECORD" : kind === "performance" ? "CLASS PERFORMANCE SHEET" : "CLASS RANK POSITIONS & SUBJECT MARKS";
   const records = kind === "performance" ? sheet.rows : sheet.ranked;
 
-  if (kind === "performance") {
+  if (earlyYears) {
+    autoTable(doc, {
+      ...tableTheme(8),
+      head: [["Learner", "Subject / learning activity", "Remark"]],
+      body: sheet.rows.flatMap(row => sheet.subjects.map(subject => {
+        const score = w.scores.find(s => s.student_id === row.student.id && s.class_id === classId && s.subject_id === subject.id && s.term === w.school.current_term && s.academic_year === w.school.academic_year);
+        return [fullName(row.student), subject.name, earlyYearsRemark(score?.descriptive_assessment) ?? "Not assessed"];
+      })),
+      columnStyles: { 0: {cellWidth: 52}, 2: {cellWidth: 40} },
+    });
+  } else if (kind === "performance") {
     autoTable(doc, {
       ...tableTheme(9),
       head: [[
@@ -159,7 +171,7 @@ export function exportClassResultsPdf(
     doc.setPage(i);
     printHeader(doc, w.school.name, heading, subtitle);
   }
-  footers(doc, gradeNine
+  footers(doc, earlyYears ? "Descriptive assessment only. No marks or class ranking." : gradeNine
     ? "Grade 9 ranking uses four core plus best two other subjects. Incomplete aggregate is unranked."
     : "Calculated from recorded current-term marks. Equal averages share a position; missing marks are not zero.");
   if (options.download !== false)

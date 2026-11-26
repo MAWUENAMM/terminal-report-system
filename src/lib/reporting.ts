@@ -2,6 +2,7 @@ import type { ReportSnapshot, Student, Workspace } from "./models";
 import type { ReportCardData, Subject as LegacySubject } from "@/types";
 import { computePositions, getGrade, DEFAULT_GRADING_SCALE, getPerformanceRemark } from "./grading";
 import { aggregatePositions, computeGradeNineMock, gradeNineExamScore, isGradeNineClass, mockBandFor } from "./grade9-mock";
+import { earlyYearsRemark, isEarlyYearsClass } from "./early-years";
 export function currentSnapshot(
   w: Workspace,
   student: Student,
@@ -31,7 +32,7 @@ export function currentSnapshot(
       .map((s) => ({ id: s.id })),
   };
 }
-export function reportData(snapshot: ReportSnapshot): {
+export function reportData(snapshot: ReportSnapshot, historical = false): {
   data: ReportCardData;
   subjects: LegacySubject[];
 } {
@@ -40,12 +41,13 @@ export function reportData(snapshot: ReportSnapshot): {
     sch = x.school,
     c = x.class;
   const gradeNine = isGradeNineClass(c.name);
+  const earlyYears = isEarlyYearsClass(c.name) && (!historical || x.scores.some(s => Object.prototype.hasOwnProperty.call(s, 'descriptive_assessment')));
   const currentScores = gradeNine
     ? x.scores.filter(score => gradeNineExamScore(score.exam_raw) !== null)
     : x.scores;
   const markFor = (score: { exam_raw: unknown; total: unknown }) =>
     gradeNine ? gradeNineExamScore(score.exam_raw)! : Number(score.total);
-  const average = currentScores.length
+  const average = !earlyYears && currentScores.length
     ? currentScores.reduce((sum, score) => sum + markFor(score), 0) / currentScores.length
     : 0;
   // Unscored learners must not be ranked as if they received zero.
@@ -57,7 +59,7 @@ export function reportData(snapshot: ReportSnapshot): {
     const mean = scores.reduce((n, sc) => n + markFor(sc), 0) / scores.length;
     return [{ studentId: student.id, total: Math.round(mean * 10) / 10 }];
   });
-  const positions = computePositions(averages);
+  const positions = earlyYears ? new Map<string, number>() : computePositions(averages);
   const gradeNineMockPositions = isGradeNineClass(c.name)
     ? aggregatePositions(x.class_students.map(student => {
         const marked = x.class_scores
@@ -136,10 +138,11 @@ export function reportData(snapshot: ReportSnapshot): {
         sbaScaled: gradeNine ? 0 : Number(sc.sba_scaled),
         examScaled: gradeNine ? markFor(sc) : Number(sc.exam_scaled),
         total: markFor(sc),
-        grade: gradeNine ? (mockBandFor(markFor(sc))?.grade ?? "-") : sc.grade,
-        subjectRemark: gradeNine ? getPerformanceRemark(markFor(sc))
+        descriptiveAssessment: earlyYears ? earlyYearsRemark(sc.descriptive_assessment) : undefined,
+        grade: earlyYears ? "-" : gradeNine ? (mockBandFor(markFor(sc))?.grade ?? "-") : sc.grade,
+        subjectRemark: earlyYears ? (earlyYearsRemark(sc.descriptive_assessment) ?? "Not assessed") : gradeNine ? getPerformanceRemark(markFor(sc))
           : (sc.subject_remark || getPerformanceRemark(Number(sc.total))),
-        position: computePositions(
+        position: earlyYears ? undefined : computePositions(
           x.class_scores
             .filter((other) =>
               other.subject_id === sc.subject_id && (!gradeNine || gradeNineExamScore(other.exam_raw) !== null))
@@ -181,11 +184,12 @@ export function reportData(snapshot: ReportSnapshot): {
             headteacherRemark: x.remarks.headteacher_remark,
           }
         : undefined,
+      descriptiveMode: earlyYears,
       overallAverage: Math.round(average * 100) / 100,
-      overallGrade: currentScores.length
+      overallGrade: !earlyYears && currentScores.length
         ? (gradeNine ? (mockBandFor(average)?.grade ?? "-") : getGrade(average).grade)
         : "-",
-      overallPosition: currentScores.length
+      overallPosition: !earlyYears && currentScores.length
         ? (gradeNine ? gradeNineMockPositions.get(s.id) : positions.get(s.id))
         : undefined,
       gradeNineMockPosition: isGradeNineClass(c.name) ? gradeNineMockPositions.get(s.id) ?? null : undefined,
@@ -198,7 +202,7 @@ export async function downloadReport(
   revision?: number,
 ) {
   const { generateReportPDF } = await import("./report-pdf");
-  const { data, subjects } = reportData(snapshot);
+  const { data, subjects } = reportData(snapshot, revision !== undefined);
   const { resolveSchoolLogoUrl, imageUrlToPngDataUrl } = await import("./school-branding");
   const logoUrl = await resolveSchoolLogoUrl(snapshot.school.logo_url);
   if (logoUrl) data.school.logoUrl = await imageUrlToPngDataUrl(logoUrl);

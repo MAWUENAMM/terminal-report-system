@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "@/components/workspace";
 import { Empty } from "@/components/ui";
+import { earlyYearsRemark, isEarlyYearsClass } from "@/lib/early-years";
 import { isLeader, roleNames } from "@/lib/models";
 
 const termName = (term: number) =>
@@ -38,12 +39,14 @@ export default function Dashboard() {
   );
 
   const activeStudents = w.students.filter((student) => student.status === "ACTIVE");
+  const earlyClassIds = new Set(w.classes.filter(c => isEarlyYearsClass(c.name)).map(c => c.id));
   const scores = w.scores.filter(
     (score) =>
       score.academic_year === w.school.academic_year &&
-      score.term === w.school.current_term,
+      score.term === w.school.current_term && (!earlyClassIds.has(score.class_id) || earlyYearsRemark(score.descriptive_assessment)),
   );
 
+  const numericScores = scores.filter(s => !earlyClassIds.has(s.class_id));
   const expectedSubjects = new Map<string, number>();
   for (const cls of w.classes) {
     const assigned = new Set(
@@ -109,7 +112,7 @@ export default function Dashboard() {
     .map((cls) => {
       const learners = activeStudents.filter((student) => student.class_id === cls.id);
       const classScores = scores.filter((score) => score.class_id === cls.id);
-      const average = classScores.length
+      const average = !earlyClassIds.has(cls.id) && classScores.length
         ? classScores.reduce((sum, score) => sum + Number(score.total), 0) /
           classScores.length
         : 0;
@@ -119,13 +122,14 @@ export default function Dashboard() {
         learners: learners.length,
         average,
         scoreCount: classScores.length,
+        descriptive: earlyClassIds.has(cls.id),
         subjectCount: new Set(classScores.map((score) => score.subject_id)).size,
       };
     })
     .sort((a, b) => b.average - a.average || a.name.localeCompare(b.name));
 
-  const schoolAverage = scores.length
-    ? scores.reduce((sum, score) => sum + Number(score.total), 0) / scores.length
+  const schoolAverage = numericScores.length
+    ? numericScores.reduce((sum, score) => sum + Number(score.total), 0) / numericScores.length
     : 0;
 
   const stats = [
@@ -149,8 +153,8 @@ export default function Dashboard() {
     },
     {
       label: "School average",
-      value: scores.length ? schoolAverage.toFixed(1) + "%" : "—",
-      helper: scores.length ? "Across recorded current-term scores" : "No scores recorded yet",
+      value: numericScores.length ? schoolAverage.toFixed(1) + "%" : "—",
+      helper: numericScores.length ? "Across numerical assessments only" : "No scores recorded yet",
       icon: TrendingUp,
     },
   ];
@@ -297,7 +301,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <p className="text-sm font-bold tabular-nums text-slate-950">
-                      {cls.scoreCount ? cls.average.toFixed(1) + "%" : "—"}
+                      {cls.descriptive ? `${cls.scoreCount} assessments` : cls.scoreCount ? cls.average.toFixed(1) + "%" : "—"}
                     </p>
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">

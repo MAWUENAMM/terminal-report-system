@@ -1,3 +1,4 @@
+import { earlyYearsRemark, isEarlyYearsClass } from "./early-years";
 import { computePositions, getGrade } from "./grading";
 import type { ReportSnapshot } from "./models";
 
@@ -17,7 +18,8 @@ export type AcademicTermSummary = {
   academicYear: string;
   term: number;
   className: string;
-  subjects: Array<{ id: string; name: string; score: number; grade: string }>;
+  descriptiveMode?: boolean;
+  subjects: Array<{ id: string; name: string; score: number; grade: string; descriptiveAssessment?: string | null }>;
   total: number | null;
   average: number | null;
   grade: string;
@@ -42,6 +44,7 @@ export function latestArchivedTerms(archives: ArchivedAcademicTerm[]): ArchivedA
 export function summarizeAcademicTerm(a: ArchivedAcademicTerm): AcademicTermSummary {
   const snapshot = a.snapshot;
   const subjects = new Map((snapshot.subjects || []).map((s) => [s.id, s]));
+  const descriptiveMode = isEarlyYearsClass(snapshot.class?.name || "") && (snapshot.scores || []).some(s => Object.prototype.hasOwnProperty.call(s, "descriptive_assessment"));
   const marks = [...(snapshot.scores || [])]
     .filter((sc) => Number.isFinite(Number(sc.total)) && Number(sc.total) >= 0 && Number(sc.total) <= 100)
     .sort((x, y) =>
@@ -51,11 +54,12 @@ export function summarizeAcademicTerm(a: ArchivedAcademicTerm): AcademicTermSumm
     .map((s) => ({
       id: s.subject_id,
       name: subjects.get(s.subject_id)?.name || "Subject (historic)",
+      descriptiveAssessment: descriptiveMode ? earlyYearsRemark(s.descriptive_assessment) : undefined,
       score: Number(s.total),
       grade: s.grade || getGrade(Number(s.total)).grade,
     }));
 
-  const total = marks.length
+  const total = !descriptiveMode && marks.length
     ? Math.round(marks.reduce((sum, s) => sum + s.score, 0) * 100) / 100
     : null;
   const average = total === null ? null : Math.round((total / marks.length) * 10) / 10;
@@ -66,12 +70,12 @@ export function summarizeAcademicTerm(a: ArchivedAcademicTerm): AcademicTermSumm
     const mean = scores.reduce((sum, s) => sum + Number(s.total), 0) / scores.length;
     return [{ studentId: student.id, total: Math.round(mean * 10) / 10 }];
   });
-  const position = marks.length ? computePositions(ranked).get(a.student_id) ?? null : null;
+  const position = !descriptiveMode && marks.length ? computePositions(ranked).get(a.student_id) ?? null : null;
   const att = snapshot.attendance;
   return {
     archive: a, academicYear: a.academic_year, term: a.term,
     className: snapshot.class?.name || "Class not recorded",
-    subjects: marks, total, average,
+    subjects: marks, total, average, descriptiveMode,
     grade: average === null ? "—" : getGrade(average).grade,
     position,
     attendance: att ? { daysPresent: Number(att.days_present), totalDays: Number(att.total_days) } : null,

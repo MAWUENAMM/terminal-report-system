@@ -1,3 +1,4 @@
+import { earlyYearsRemark, isEarlyYearsClass } from "./early-years";
 import { computePositions } from "./grading";
 import { aggregatePositions, computeGradeNineMock, gradeNineExamScore, isGradeNineClass } from "./grade9-mock";
 import { fullName, type School, type SchoolClass, type Score, type Student, type Subject, type Workspace } from "./models";
@@ -51,6 +52,7 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
   const classGroup = workspace.classes.find((c) => c.id === classId && c.school_id === workspace.school.id);
   if (!classGroup) throw new Error("Select a class assigned to this school.");
   const gradeNine = isGradeNineClass(classGroup.name);
+  const earlyYears = isEarlyYearsClass(classGroup.name);
 
   const assigned = new Set(workspace.assignments
     .filter((a) => a.class_id === classId && a.school_id === workspace.school.id)
@@ -77,15 +79,17 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
     { order: "az" },
   ).map((student) => {
     const bySubject = new Map<string, number>();
+    let assessed = 0;
     for (const subject of subjects) {
       const score = scoreIndex.get(`${student.id}:${subject.id}`);
+      if (earlyYears) { if (earlyYearsRemark(score?.descriptive_assessment)) assessed++; continue; }
       const total = gradeNine ? gradeNineExamScore(score?.exam_raw) : Number(score?.total);
       if (score && total !== null && Number.isFinite(total) && total >= 0 && total <= 100) {
         bySubject.set(subject.id, total);
       }
     }
-    const subjectCount = bySubject.size;
-    const total = subjectCount ? [...bySubject.values()].reduce((sum, n) => sum + n, 0) : null;
+    const subjectCount = earlyYears ? assessed : bySubject.size;
+    const total = !earlyYears && subjectCount ? [...bySubject.values()].reduce((sum, n) => sum + n, 0) : null;
     const average = total === null ? null : oneDecimal(total / subjectCount);
     return {
       student, bySubject,
@@ -99,7 +103,7 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
 
   // Grade 9 positions follow the six-subject aggregate (lower is better);
   // other classes retain the original average-based competition ranking.
-  const ranks = gradeNine
+  const ranks = earlyYears ? new Map<string, number>() : gradeNine
     ? aggregatePositions(rows.map((row) => {
         const mock = computeGradeNineMock([...row.bySubject.entries()].map(([subjectId, score]) => ({
           subjectId,
@@ -117,7 +121,7 @@ export function buildClassResultSheet(workspace: Workspace, classId: string): Cl
     (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER) ||
     fullName(a.student).localeCompare(fullName(b.student), "en", { sensitivity: "base" }),
   );
-  return { school: workspace.school, classGroup, subjects, rows, ranked, withScores: ranks.size };
+  return { school: workspace.school, classGroup, subjects, rows, ranked, withScores: earlyYears ? rows.filter(row => row.subjectCount > 0).length : ranks.size };
 }
 
 export function ordinal(rank: number | null): string {

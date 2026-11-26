@@ -1,5 +1,6 @@
 import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { earlyYearsRemark, isEarlyYearsClass } from "./early-years";
 import { isGradeNineClass } from "./grade9-mock";
 import { generateGradeNineMockPDF } from "./grade9-report-pdf";
 import { ReportCardData, Subject } from "@/types";
@@ -29,6 +30,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 9;
   const contentWidth = pageWidth - margin * 2;
+  const earlyYears = data.descriptiveMode ?? isEarlyYearsClass(data.class.name);
   const compact = data.scores.length > 7;
   let y = 10;
 
@@ -240,20 +242,21 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
     ["POSITION", overallPosition ? `${overallPosition} / ${totalStudents}` : "—"],
     ["NO. ON ROLL", String(totalStudents)],
   ];
-  summary.forEach(([label, value], index) => {
+  if (!earlyYears) summary.forEach(([label, value], index) => {
     const x = margin + index * (summaryWidth + summaryGap);
     fillRect(x, y, summaryWidth, 13, index === 0 ? [237, 248, 243] : PALE, 1.8);
     text(label, x + 3.5, y + 4.7, 6.5, "bold", MUTED);
     text(value, x + 3.5, y + 10.3, 9.8, "bold", index === 0 ? GREEN : NAVY);
   });
-  y += 17;
+  if (!earlyYears) y += 17;
 
-  text("ACADEMIC PERFORMANCE", margin, y, 9, "bold", GREEN);
+  text(earlyYears ? "CHILD ASSESSMENT RECORD" : "ACADEMIC PERFORMANCE", margin, y, 9, "bold", GREEN);
   setStroke(GOLD, 0.9);
   doc.line(margin, y + 2, margin + 28, y + 2);
   y += 4.5;
 
   const tableBody = orderedScores.map((score) => {
+    if (earlyYears) return [subjectMap.get(score.subjectId)?.name || score.subjectId, earlyYearsRemark(score.descriptiveAssessment) ?? "Not assessed"];
     const total = Number(score.total);
     return [
       subjectMap.get(score.subjectId)?.name || score.subjectId,
@@ -268,7 +271,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
 
   autoTable(doc, {
     startY: y,
-    head: [[
+    head: earlyYears ? [["SUBJECT / LEARNING ACTIVITY", "REMARK"]] : [[
       "SUBJECT",
       `SBA ${school.sbaWeight}%`,
       `EXAM ${school.examWeight}%`,
@@ -281,9 +284,9 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
     theme: "grid",
     styles: {
       font: "helvetica",
-      fontSize: compact ? 7.2 : 8.1,
+      fontSize: earlyYears ? 7.1 : compact ? 7.2 : 8.1,
       textColor: NAVY,
-      cellPadding: compact ? 1.05 : 1.35,
+      cellPadding: earlyYears ? 0.75 : compact ? 1.05 : 1.35,
       lineColor: LINE,
       lineWidth: 0.25,
       valign: "middle",
@@ -297,7 +300,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
       cellPadding: compact ? 1.2 : 1.5,
     },
     alternateRowStyles: { fillColor: [250, 251, 250] },
-    columnStyles: {
+    columnStyles: earlyYears ? { 0: { cellWidth: contentWidth - 48, fontStyle: "bold" }, 1: { cellWidth: 48, halign: "center" } } : {
       0: { cellWidth: 50, fontStyle: "bold" },
       1: { cellWidth: 20, halign: "center" },
       2: { cellWidth: 20, halign: "center" },
@@ -382,7 +385,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
   remarkRow("CLASS TEACHER", remarks?.classTeacherRemark);
   remarkRow("HEADTEACHER", remarks?.headteacherRemark);
 
-  room(compact ? 41 : 46);
+  room(earlyYears ? 28 : compact ? 41 : 46);
   const nextTerm = school.nextTermBegins
     ? new Date(school.nextTermBegins + "T12:00:00").toLocaleDateString("en-GB", {
         day: "numeric", month: "long", year: "numeric",
@@ -394,8 +397,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
   const facts: Array<[string, string]> = [
     ["PROMOTED TO", promotedTo || "Pending / not recorded"],
     ["NEXT TERM BEGINS", nextTerm],
-    ["TOTAL MARKS", totalMarks],
-    ["RESULT SUMMARY", scores.length ? `${overallAverage.toFixed(1)}% - ${overallGrade}` : "No scores"],
+    ...(!earlyYears ? [["TOTAL MARKS", totalMarks], ["RESULT SUMMARY", scores.length ? `${overallAverage.toFixed(1)}% - ${overallGrade}` : "No scores"]] as Array<[string,string]> : []),
   ];
   const factGap = 4;
   const factWidth = (contentWidth - factGap) / 2;
@@ -406,7 +408,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
     text(label, x + 3, top + 4.3, 6.5, "bold", MUTED);
     text(value, x + 3, top + 10.1, fit(value, factWidth - 6, 8.8, 7.1), "bold", NAVY);
   });
-  y += 29;
+  y += earlyYears ? 16 : 29;
 
   const signatureWidth = (contentWidth - 14) / 2;
   [
