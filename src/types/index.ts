@@ -152,6 +152,7 @@ export interface ReportCardData {
   attendance?: Attendance;
   affective?: AffectiveRecord;
   remarks?: Remarks;
+  descriptiveMode?: boolean;
   overallAverage: number;
   overallGrade: string;
   overallPosition?: number;
