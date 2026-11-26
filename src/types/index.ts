@@ -110,6 +110,7 @@ export interface Score {
   grade: string;
   position?: number;
   subjectRemark?: string;
+  descriptiveAssessment?: string | null;
 }
 
 export interface Attendance {
