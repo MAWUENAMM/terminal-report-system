@@ -25,6 +25,7 @@ import type { RemarkCategory } from "@/lib/remark-options";
 import { useWorkspace } from "@/components/workspace";
 import { browserClient } from "@/lib/supabase/client";
 import { currentSnapshot, downloadReport, reportData } from "@/lib/reporting";
+import { earlyYearsRemark, isEarlyYearsClass } from "@/lib/early-years";
 import { gradeNineExamScore, isGradeNineClass, mockBandFor } from "@/lib/grade9-mock";
 import { fullName, isLeader, type Student, type ReportSnapshot } from "@/lib/models";
 import {
@@ -230,6 +231,7 @@ export default function StudentProfile({ student, onClose }: Props) {
   }
 
   const gradeNine = isGradeNineClass(snapshot.class.name);
+  const earlyYears = isEarlyYearsClass(snapshot.class.name);
   const profileReport = reportData(snapshot).data;
   const scoreRows = [...snapshot.scores]
     .filter(s => !gradeNine || gradeNineExamScore(s.exam_raw) !== null)
@@ -382,7 +384,7 @@ export default function StudentProfile({ student, onClose }: Props) {
                       ["Position", overallPosition ? `${overallPosition} / ${totalStudents}` : "—", GraduationCap],
                       ["Grade", overallGrade, BookOpen],
                       ["Attendance", snapshot.attendance?.total_days ? `${snapshot.attendance.days_present}/${snapshot.attendance.total_days}` : "—", CalendarDays],
-                    ] as const).map(([label, value, Icon]) => (
+                    ] as const).filter(([label]) => !earlyYears || label === "Attendance").map(([label, value, Icon]) => (
                       <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</span><span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-4 w-4" /></span></div>
                         <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">{value}</p>
@@ -423,26 +425,27 @@ export default function StudentProfile({ student, onClose }: Props) {
               {section === "results" && (
                 <div className="space-y-5">
                   <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                    <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Current term</p><h3 className="mt-1 text-lg font-bold">{termLabel(w.school.current_term)} results</h3></div><div className="text-right"><p className="text-xs text-slate-400">Overall grade</p><p className="text-2xl font-black text-slate-900">{overallGrade}</p></div></div>
+                    <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Current term</p><h3 className="mt-1 text-lg font-bold">{termLabel(w.school.current_term)} results</h3></div>{!earlyYears && <div className="text-right"><p className="text-xs text-slate-400">Overall grade</p><p className="text-2xl font-black text-slate-900">{overallGrade}</p></div>}</div>
                     <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
                       <table className="w-full min-w-[680px] text-sm">
-                        <thead className="bg-slate-900 text-left text-[10px] uppercase tracking-[0.12em] text-white"><tr><th className="px-4 py-3">Subject</th>{!gradeNine && <th className="px-4 py-3 text-center">SBA {w.school.sba_weight}%</th>}<th className="px-4 py-3 text-center">{gradeNine ? "Exam (100%)" : `Exam ${w.school.exam_weight}%`}</th>{!gradeNine && <th className="px-4 py-3 text-center">Total</th>}<th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th><th className="px-4 py-3">Remark</th></tr></thead>
+                        <thead className="bg-slate-900 text-left text-[10px] uppercase tracking-[0.12em] text-white"><tr><th className="px-4 py-3">Subject</th>{!earlyYears && <>{!gradeNine && <th className="px-4 py-3 text-center">SBA {w.school.sba_weight}%</th>}<th className="px-4 py-3 text-center">{gradeNine ? "Exam (100%)" : `Exam ${w.school.exam_weight}%`}</th>{!gradeNine && <th className="px-4 py-3 text-center">Total</th>}<th className="px-4 py-3 text-center">Grade</th><th className="px-4 py-3 text-center">Pos.</th></>}<th className="px-4 py-3">Remark</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {scoreRows.length ? scoreRows.map((score) => {
                             const subject = w.subjects.find((s) => s.id === score.subject_id);
+                            if (earlyYears) return <tr key={score.id}><td className="px-4 py-3 font-semibold">{subject?.name || "Subject"}</td><td className="px-4 py-3">{earlyYearsRemark(score.descriptive_assessment) ?? "Not assessed"}</td></tr>;
                             const total = markFor(score);
                             const remark = gradeNine ? getPerformanceRemark(total)
                               : (score.subject_remark || getPerformanceRemark(total));
                             const grade = gradeNine ? (mockBandFor(total)?.grade ?? "—") : score.grade;
                             return <tr key={score.id}><td className="px-4 py-3 font-semibold text-slate-800">{subject?.name || "Subject"}</td>{!gradeNine && <td className="px-4 py-3 text-center">{Number(score.sba_scaled).toFixed(1)}</td>}<td className="px-4 py-3 text-center font-semibold">{(gradeNine ? total : Number(score.exam_scaled)).toFixed(1)}</td>{!gradeNine && <td className="px-4 py-3 text-center font-black text-red-600">{total.toFixed(1)}</td>}<td className="px-4 py-3 text-center font-bold">{grade}</td><td className="px-4 py-3 text-center">{subjectPositions.get(score.subject_id) || "—"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${scoreTone(total)}`}>{remark}</span></td></tr>;
-                          }) : <tr><td colSpan={gradeNine ? 5 : 7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>}
+                          }) : <tr><td colSpan={earlyYears ? 2 : gradeNine ? 5 : 7} className="px-4 py-10 text-center text-slate-400">No scores have been entered for this term.</td></tr>}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  {!earlyYears && <div className="grid gap-4 sm:grid-cols-3">
                     {[["Total score", scoreRows.reduce((n, s) => n + markFor(s), 0).toFixed(1)], ["Average", scoreRows.length ? `${average.toFixed(1)}%` : "—"], [gradeNine ? "Aggregate position" : "Class position", overallPosition ? `${overallPosition} of ${totalStudents}` : "—"]].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-2 text-xl font-black text-slate-900">{value}</p></div>)}
-                  </div>
+                  </div>}
                 </div>
               )}
 
