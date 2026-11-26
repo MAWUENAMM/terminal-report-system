@@ -26,6 +26,7 @@ import {
   type Student,
 } from "@/lib/models";
 import { currentSnapshot, downloadReport, reportData } from "@/lib/reporting";
+import { earlyYearsRemark, isEarlyYearsClass } from "@/lib/early-years";
 import { computeGradeNineMock, isGradeNineClass } from "@/lib/grade9-mock";
 
 type ReportStatus = {
@@ -46,7 +47,8 @@ const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString("en-GB") : "—";
 
 function reportStatus(snapshot: ReportSnapshot, expectedSubjects: number): ReportStatus {
-  const scoredSubjects = new Set(snapshot.scores.map((score) => score.subject_id)).size;
+  const early = isEarlyYearsClass(snapshot.class.name);
+  const scoredSubjects = new Set(snapshot.scores.filter(s => !early || earlyYearsRemark(s.descriptive_assessment)).map((score) => score.subject_id)).size;
   const missing: string[] = [];
 
   if (!expectedSubjects) missing.push("class subjects");
@@ -61,8 +63,8 @@ function reportStatus(snapshot: ReportSnapshot, expectedSubjects: number): Repor
   if (!snapshot.remarks?.headteacher_remark?.trim())
     missing.push("headteacher remark");
 
-  if (!snapshot.scores.length)
-    return { key: "empty", label: "No scores", missing };
+  if (!scoredSubjects)
+    return { key: "empty", label: early ? "Not assessed" : "No scores", missing };
   if (!missing.length) return { key: "ready", label: "Ready", missing };
   return { key: "attention", label: "Needs attention", missing };
 }
@@ -97,6 +99,7 @@ export default function Reports() {
     ? classId
     : classes[0]?.id || "";
   const selectedClass = classes.find((c) => c.id === selected);
+  const earlyYears = isEarlyYearsClass(selectedClass?.name || "");
 
   const open = w.terms.some(
     (t) =>
@@ -154,7 +157,7 @@ export default function Reports() {
     return matchesQuery && matchesStatus;
   });
 
-  const classAverageRows = currentRows.filter((row) => row.snapshot.scores.length);
+  const classAverageRows = currentRows.filter((row) => !earlyYears && row.snapshot.scores.length);
   const classAverage = classAverageRows.length
     ? classAverageRows.reduce((sum, row) => sum + row.report.overallAverage, 0) /
       classAverageRows.length
@@ -201,6 +204,7 @@ export default function Reports() {
   const previewSubjectMap = previewBundle
     ? new Map(previewBundle.subjects.map((subject) => [subject.id, subject.name]))
     : new Map<string, string>();
+  const previewEarlyYears = !!previewBundle && isEarlyYearsClass(previewBundle.data.class.name);
   const previewGradeNineMock = previewBundle && isGradeNineClass(previewBundle.data.class.name)
     ? computeGradeNineMock(previewBundle.data.scores.map((score) => ({
         subjectId: score.subjectId,
@@ -404,7 +408,7 @@ export default function Reports() {
               </button>
               <button className="btn-primary" disabled={busy || !currentRows.length}
                 onClick={() => void downloadClassSheet("ranking")}>
-                <Download className="mr-1.5 inline h-4 w-4" /> New rank positions (PDF)
+                <Download className="mr-1.5 inline h-4 w-4" /> {earlyYears ? "Class assessment record (PDF)" : "New rank positions (PDF)"}
               </button>
               <button className="btn-secondary" disabled={busy || !currentRows.length}
                 onClick={() => void downloadEveryClassReport()}>
@@ -421,7 +425,7 @@ export default function Reports() {
             ["Total learners", String(currentRows.length), UserRound],
             ["Reports ready", String(readyCount), ShieldCheck],
             ["Need attention", String(incompleteCount), MessageSquareText],
-            ["Class average", classAverage === null ? "—" : `${classAverage.toFixed(1)}%`, Award],
+            [earlyYears ? "Assessments" : "Class average", earlyYears ? String(currentRows.reduce((sum,row) => sum + row.report.scores.filter(s => s.descriptiveAssessment).length,0)) : classAverage === null ? "—" : `${classAverage.toFixed(1)}%`, Award],
             [
               "Average attendance",
               attendanceAverage === null ? "—" : `${attendanceAverage.toFixed(1)}%`,
@@ -581,9 +585,7 @@ export default function Reports() {
                   <thead>
                     <tr>
                       <th>Learner</th>
-                      <th>Average</th>
-                      <th>Grade</th>
-                      <th>Position</th>
+                      {earlyYears ? <th>Assessed activities</th> : <><th>Average</th><th>Grade</th><th>Position</th></>}
                       <th>Report status</th>
                       <th>Last generated</th>
                       <th>Actions</th>
@@ -614,13 +616,13 @@ export default function Reports() {
                             </span>
                           </button>
                         </td>
-                        <td>{snapshot.scores.length ? `${report.overallAverage.toFixed(1)}%` : "—"}</td>
+                        {earlyYears ? <td>{report.scores.filter(s => s.descriptiveAssessment).length} / {expectedSubjectIds.length}</td> : <><td>{snapshot.scores.length ? `${report.overallAverage.toFixed(1)}%` : "—"}</td>
                         <td className="font-semibold">{report.overallGrade}</td>
                         <td>
                           {report.overallPosition
                             ? `${report.overallPosition} / ${report.totalStudents}`
                             : "—"}
-                        </td>
+                        </td></>}
                         <td>
                           <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(status.key)}`}>
                             {status.label}
@@ -702,7 +704,7 @@ export default function Reports() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center">
+                  {earlyYears ? <p className="mt-4 text-sm">Assessed activities: {report.scores.filter(s => s.descriptiveAssessment).length} / {expectedSubjectIds.length}</p> : <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Average</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">
@@ -719,7 +721,7 @@ export default function Reports() {
                         {report.overallPosition ? `${report.overallPosition}/${report.totalStudents}` : "—"}
                       </p>
                     </div>
-                  </div>
+                  </div>}
 
                   {!!status.missing.length && (
                     <p className="mt-3 text-xs leading-5 text-slate-500">
@@ -984,7 +986,7 @@ export default function Reports() {
                   </div>
                 </section>
 
-                <section className={previewGradeNineMock ? "grid grid-cols-2 gap-3 sm:grid-cols-4" : "grid grid-cols-3 gap-3"}>
+                {!previewEarlyYears && <section className={previewGradeNineMock ? "grid grid-cols-2 gap-3 sm:grid-cols-4" : "grid grid-cols-3 gap-3"}>
                   {[
                     ["Average", `${previewBundle.data.overallAverage.toFixed(1)}%`, Award],
                     ["Grade", previewBundle.data.overallGrade, BookOpen],
@@ -1016,13 +1018,13 @@ export default function Reports() {
                       </p>
                     </div>
                   )}
-                </section>
+                </section>}
               </div>
 
               <section>
                 <div className="mb-3 flex items-center gap-2">
                   <BookOpen className="h-5 w-5 text-emerald-700" />
-                  <h4 className="font-bold text-slate-900">Academic results</h4>
+                  <h4 className="font-bold text-slate-900">{previewEarlyYears ? "Child assessment record" : "Academic results"}</h4>
                 </div>
                 {previewBundle.data.scores.length ? (
                   <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -1030,12 +1032,12 @@ export default function Reports() {
                       <thead>
                         <tr>
                           <th>Subject</th>
-                          {!previewGradeNineMock && <th>SBA</th>}
+                          {!previewEarlyYears && <>{!previewGradeNineMock && <th>SBA</th>}
                           <th>{previewGradeNineMock ? "Exam (100%)" : "Exam"}</th>
                           {!previewGradeNineMock && <th>Total</th>}
                           <th>Grade</th>
                           {previewGradeNineMock && <th>Point</th>}
-                          <th>Position</th>
+                          <th>Position</th></>}
                           <th>Remark</th>
                         </tr>
                       </thead>
@@ -1045,14 +1047,14 @@ export default function Reports() {
                             <td className="font-semibold">
                               {previewSubjectMap.get(score.subjectId) || score.subjectId}
                             </td>
-                            {!previewGradeNineMock && <td>{Number(score.sbaScaled).toFixed(1)}</td>}
+                            {!previewEarlyYears && <>{!previewGradeNineMock && <td>{Number(score.sbaScaled).toFixed(1)}</td>}
                             <td className="font-semibold">{Number(previewGradeNineMock ? score.examRaw : score.examScaled).toFixed(1)}</td>
                             {!previewGradeNineMock && <td className="font-semibold">{Number(score.total).toFixed(1)}</td>}
                             <td>{score.grade}</td>
                             {previewGradeNineMock && (
                               <td>{previewGradeNineMock.rows.find((row) => row.subjectId === score.subjectId)?.point ?? "—"}</td>
                             )}
-                            <td>{score.position || "—"}</td>
+                            <td>{score.position || "—"}</td></>}
                             <td>{score.subjectRemark || "—"}</td>
                           </tr>
                         ))}
