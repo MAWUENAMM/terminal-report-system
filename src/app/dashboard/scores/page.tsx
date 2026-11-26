@@ -224,9 +224,8 @@ export default function Scores() {
                 if (earlyYears) {
                   const remark = earlyYearsRemark(d.subject_remark);
                   if (!remark) throw new Error("Select an assessment remark for every edited learner.");
-                  const existing = scoreFor(id);
+                  // Upsert by learner/subject/term/year, never include the surrogate ID.
                   return {
-                    ...(existing ? { id: existing.id } : {}),
                     school_id: w.school.id, student_id: id, class_id: classId,
                     subject_id: selected, academic_year: w.school.academic_year, term: w.school.current_term,
                     sba_raw: 0, exam_raw: 0, descriptive_assessment: remark,
@@ -250,9 +249,8 @@ export default function Scores() {
                   b > 100
                 )
                   throw new Error(`SBA must be 0–${sbaMax}; examination must be 0–100.`);
-                const existing = scoreFor(id);
+                // Omitting the ID for every row keeps mixed insert/update batches uniform.
                 return {
-                  ...(existing ? { id: existing.id } : {}),
                   school_id: w.school.id,
                   student_id: id,
                   class_id: classId,
