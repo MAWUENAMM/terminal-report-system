@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { EARLY_YEARS_REMARKS, earlyYearsRemark, isEarlyYearsClass } from "../src/lib/early-years";
 import { generateReportPDF } from "../src/lib/report-pdf";
 import { reportData } from "../src/lib/reporting";
@@ -66,4 +67,16 @@ test("historical snapshots created before descriptive assessments retain origina
   const data=reportData(older,true).data;
   assert.equal(data.descriptiveMode,false);
   assert.equal(data.overallAverage,70);
+});
+
+// The page sends a single atomic upsert for mixed existing and new scores.
+// Including id in only some rows makes PostgREST include it for the whole batch.
+test("assessment bulk saves omit surrogate IDs for both descriptive and numeric rows",()=>{
+  const source=readFileSync("src/app/dashboard/scores/page.tsx","utf8");
+  const payload=source.slice(source.indexOf("const rows = Object.entries(edits).map"),source.indexOf("await saveRows("));
+  assert.ok(payload.includes("descriptive_assessment: remark"));
+  assert.ok(payload.includes("sba_raw: a"));
+  assert.doesNotMatch(payload,/\bid\s*:\s*(?:existing|scoreFor)/);
+  assert.doesNotMatch(payload,/\.\.\.\(existing\s*\?/);
+  assert.ok(source.includes('"student_id,subject_id,term,academic_year"'));
 });
