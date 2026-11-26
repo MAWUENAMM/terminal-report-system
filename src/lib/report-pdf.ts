@@ -30,7 +30,7 @@ export function generateReportPDF(data: ReportCardData, subjects: Subject[], exi
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 9;
   const contentWidth = pageWidth - margin * 2;
-  const earlyYears = isEarlyYearsClass(data.class.name);
+  const earlyYears = data.descriptiveMode ?? isEarlyYearsClass(data.class.name);
   const compact = data.scores.length > 7;
   let y = 10;
 
