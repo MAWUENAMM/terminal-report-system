@@ -32,7 +32,7 @@ export function currentSnapshot(
       .map((s) => ({ id: s.id })),
   };
 }
-export function reportData(snapshot: ReportSnapshot): {
+export function reportData(snapshot: ReportSnapshot, historical = false): {
   data: ReportCardData;
   subjects: LegacySubject[];
 } {
@@ -41,7 +41,7 @@ export function reportData(snapshot: ReportSnapshot): {
     sch = x.school,
     c = x.class;
   const gradeNine = isGradeNineClass(c.name);
-  const earlyYears = isEarlyYearsClass(c.name);
+  const earlyYears = isEarlyYearsClass(c.name) && (!historical || x.scores.some(s => Object.prototype.hasOwnProperty.call(s, 'descriptive_assessment')));
   const currentScores = gradeNine
     ? x.scores.filter(score => gradeNineExamScore(score.exam_raw) !== null)
     : x.scores;
@@ -184,6 +184,7 @@ export function reportData(snapshot: ReportSnapshot): {
             headteacherRemark: x.remarks.headteacher_remark,
           }
         : undefined,
+      descriptiveMode: earlyYears,
       overallAverage: Math.round(average * 100) / 100,
       overallGrade: !earlyYears && currentScores.length
         ? (gradeNine ? (mockBandFor(average)?.grade ?? "-") : getGrade(average).grade)
@@ -201,7 +202,7 @@ export async function downloadReport(
   revision?: number,
 ) {
   const { generateReportPDF } = await import("./report-pdf");
-  const { data, subjects } = reportData(snapshot);
+  const { data, subjects } = reportData(snapshot, revision !== undefined);
   const { resolveSchoolLogoUrl, imageUrlToPngDataUrl } = await import("./school-branding");
   const logoUrl = await resolveSchoolLogoUrl(snapshot.school.logo_url);
   if (logoUrl) data.school.logoUrl = await imageUrlToPngDataUrl(logoUrl);
