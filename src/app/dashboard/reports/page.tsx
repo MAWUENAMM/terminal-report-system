@@ -200,11 +200,11 @@ export default function Reports() {
         b.created_at.localeCompare(a.created_at) || b.revision - a.revision,
     );
 
-  const previewBundle = preview ? reportData(preview.snapshot) : null;
+  const previewBundle = preview ? reportData(preview.snapshot, preview.revision !== undefined) : null;
   const previewSubjectMap = previewBundle
     ? new Map(previewBundle.subjects.map((subject) => [subject.id, subject.name]))
     : new Map<string, string>();
-  const previewEarlyYears = !!previewBundle && isEarlyYearsClass(previewBundle.data.class.name);
+  const previewEarlyYears = !!previewBundle?.data.descriptiveMode;
   const previewGradeNineMock = previewBundle && isGradeNineClass(previewBundle.data.class.name)
     ? computeGradeNineMock(previewBundle.data.scores.map((score) => ({
         subjectId: score.subjectId,
