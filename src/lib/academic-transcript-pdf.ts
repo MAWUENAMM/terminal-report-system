@@ -109,11 +109,11 @@ export function generateAcademicTranscriptPdf(
     doc.text(`${result.academicYear}  |  ${termLabel(result.term)}  |  ${result.className}`, margin + 3.4, y + 6.7);
     y += 13;
     const body = result.subjects.length ? result.subjects.map((row, i) => [
-      String(i + 1), row.name, row.score.toFixed(1), row.grade,
+      String(i + 1), row.name, ...(result.descriptiveMode ? [row.descriptiveAssessment ?? "Not assessed"] : [row.score.toFixed(1), row.grade]),
     ]) : [["—", "No subject marks recorded for this term", "—", "—"]];
     autoTable(doc, {
       startY: y,
-      head: [["No.", "Subject", "Mark / 100", "Grade"]],
+      head: [result.descriptiveMode ? ["No.", "Subject", "Remark"] : ["No.", "Subject", "Mark / 100", "Grade"]],
       body,
       margin: { left: margin, right: margin, top: 45, bottom: 26 },
       theme: "striped",
@@ -133,7 +133,7 @@ export function generateAcademicTranscriptPdf(
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...NAVY);
-    const summary = [
+    const summary = result.descriptiveMode ? "Descriptive assessment only" : [
       `Total: ${result.total?.toFixed(1) ?? "—"}`,
       `Average: ${result.average?.toFixed(1) ?? "—"}%`,
       `Grade: ${result.grade}`,
